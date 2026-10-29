@@ -1,0 +1,128 @@
+"""Cài đặt dựng video. Mọi thứ ở đây serialize được sang JSON để lưu preset."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class CutSettings:
+    min_seg: float = 3.0
+    max_seg: float = 6.0
+    target_duration: float = 30.0  # bị ghi đè bởi độ dài voice nếu có voice
+    shuffle_clips: bool = True
+    shuffle_segments: bool = True
+
+
+@dataclass
+class OutputSettings:
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    fit: str = "crop"  # "crop" (lấp đầy khung) hoặc "pad" (giữ nguyên, thêm viền đen)
+    crf: int = 20
+    preset: str = "veryfast"
+
+
+@dataclass
+class TitleSettings:
+    enabled: bool = True
+    text: str = ""
+    font: str = "Arial"
+    font_size: int = 72
+    color: str = "#FFFFFF"
+    outline_color: str = "#000000"
+    outline: int = 4
+    margin_v: int = 220  # khoảng cách từ mép trên, px
+
+
+@dataclass
+class SubtitleSettings:
+    enabled: bool = True
+    font: str = "Arial"
+    font_size: int = 64
+    color: str = "#FFFF00"
+    outline_color: str = "#000000"
+    outline: int = 4
+    margin_v: int = 300  # khoảng cách từ mép dưới, px
+    max_words: int = 6  # số chữ tối đa mỗi dòng phụ đề
+
+
+@dataclass
+class VoiceSettings:
+    enabled: bool = False
+    text: str = ""
+    voice: str = "vi-VN-HoaiMyNeural"
+    rate: str = "+0%"
+    volume: float = 1.0
+
+
+@dataclass
+class AudioSettings:
+    keep_original: bool = True
+    original_volume: float = 0.3
+    music_path: str = ""
+    music_volume: float = 0.15
+
+
+@dataclass
+class RenderSettings:
+    cut: CutSettings = field(default_factory=CutSettings)
+    output: OutputSettings = field(default_factory=OutputSettings)
+    title: TitleSettings = field(default_factory=TitleSettings)
+    subtitle: SubtitleSettings = field(default_factory=SubtitleSettings)
+    voice: VoiceSettings = field(default_factory=VoiceSettings)
+    audio: AudioSettings = field(default_factory=AudioSettings)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RenderSettings":
+        return _build(cls, data)
+
+
+def _build(cls, data: dict[str, Any]):
+    """Dựng dataclass lồng nhau, bỏ qua khoá lạ để preset cũ vẫn mở được."""
+    kwargs = {}
+    for f in fields(cls):
+        if f.name not in data:
+            continue
+        value = data[f.name]
+        default = f.default_factory() if callable(f.default_factory) else None  # type: ignore[misc]
+        if is_dataclass(default) and isinstance(value, dict):
+            value = _build(type(default), value)
+        kwargs[f.name] = value
+    return cls(**kwargs)
+
+
+class PresetStore:
+    """Lưu preset dạng file JSON trong một thư mục."""
+
+    def __init__(self, folder: Path):
+        self.folder = Path(folder)
+        self.folder.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, name: str) -> Path:
+        safe = "".join(c for c in name if c.isalnum() or c in " -_").strip()
+        if not safe:
+            raise ValueError("Tên preset không hợp lệ")
+        return self.folder / f"{safe}.json"
+
+    def names(self) -> list[str]:
+        return sorted(p.stem for p in self.folder.glob("*.json"))
+
+    def save(self, name: str, settings: RenderSettings) -> Path:
+        path = self._path(name)
+        path.write_text(json.dumps(settings.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def load(self, name: str) -> RenderSettings:
+        data = json.loads(self._path(name).read_text(encoding="utf-8"))
+        return RenderSettings.from_dict(data)
+
+    def delete(self, name: str) -> None:
+        self._path(name).unlink(missing_ok=True)
