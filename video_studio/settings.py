@@ -80,6 +80,10 @@ class SceneSettings:
     motion: bool = True  # zoom/lia ảnh (hiệu ứng Ken Burns)
     zoom: float = 0.15  # mức zoom/lia, 0.15 = 15%
     fade: float = 0.3  # mờ dần đầu/cuối mỗi cảnh, giây
+    character_dir: str = ""  # thư mục nhân vật nói khớp miệng (xem lipsync.py); trống = không dùng
+    character_side: str = "right"  # "left", "center" hoặc "right"
+    character_height: float = 0.55  # chiều cao nhân vật so với khung hình
+    lipsync: str = "auto"  # "auto" (Rhubarb nếu có), "rhubarb" hoặc "loudness"
 
 
 @dataclass

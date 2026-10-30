@@ -19,7 +19,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import captions, voice
+from . import captions, lipsync, voice
 from .media import probe, require_ffmpeg
 from .pipeline import Progress, _check, _noop, _run, finish_video
 from .settings import RenderSettings
@@ -90,22 +90,42 @@ def _motion_filter(motion: str, w: int, h: int, fps: int, frames: int, zoom: flo
     return f"{fill},zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={fps}"
 
 
+def _overlay_xy(side: str, width: int) -> tuple[str, str]:
+    margin = int(width * 0.04)
+    x = {"left": str(margin), "center": "(W-w)/2"}.get(side, f"W-w-{margin}")
+    return x, "H-h"
+
+
 def _render_scene(ffmpeg: str, scene: Scene, motion: str, duration: float, voice_path: Path | None,
-                  settings: RenderSettings, out: Path, cancel: threading.Event | None) -> None:
+                  settings: RenderSettings, out: Path, cancel: threading.Event | None,
+                  character: Path | None = None) -> None:
+    """`character`: danh sách concat khung hình nhân vật (từ lipsync.build_frames) để phủ lên cảnh."""
     o, sc = settings.output, settings.scene
     frames = max(1, round(duration * o.fps))
     vf = _motion_filter(motion, o.width, o.height, o.fps, frames, sc.zoom if sc.motion else 0)
+    if character is not None:
+        ch = max(2, int(o.height * sc.character_height) // 2 * 2)
+        x, y = _overlay_xy(sc.character_side, o.width)
+        vf = (f"[0:v]{vf}[bg];[2:v]fps={o.fps},scale=-2:{ch},format=rgba[ch];"
+              f"[bg][ch]overlay=x={x}:y={y}:format=auto")
     fade = min(sc.fade, duration / 3)
     if fade > 0:
         vf += f",fade=t=in:d={fade:.3f},fade=t=out:st={duration - fade:.3f}:d={fade:.3f}"
     vf += ",format=yuv420p"
+    if character is not None:
+        vf += "[v]"
     # -pattern_type none: tên ảnh có ký tự % không bị hiểu nhầm là chuỗi ảnh.
     cmd = [ffmpeg, "-y", "-v", "error", "-f", "image2", "-pattern_type", "none", "-i", str(scene.image)]
     if voice_path is not None:
         cmd += ["-i", str(voice_path)]
     else:
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
-    cmd += ["-map", "0:v:0", "-map", "1:a:0", "-vf", vf,
+    if character is not None:
+        cmd += ["-f", "concat", "-safe", "0", "-i", str(character)]
+        cmd += ["-filter_complex", vf, "-map", "[v]"]
+    else:
+        cmd += ["-vf", vf, "-map", "0:v:0"]
+    cmd += ["-map", "1:a:0",
             "-af", f"aresample=44100,aformat=channel_layouts=stereo,apad,atrim=0:{duration:.3f}",
             "-t", f"{duration:.3f}", "-c:v", "libx264", "-preset", o.preset, "-crf", str(o.crf),
             "-r", str(o.fps), "-c:a", "aac", "-b:a", "128k", str(out)]
@@ -122,6 +142,7 @@ def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: P
     if v.enabled and not use_tts:
         raise ValueError("Chế độ hoạt hình hiện chỉ hỗ trợ giọng AI (Edge TTS) hoặc tắt voice.")
     ffmpeg, _ = require_ffmpeg()
+    char = lipsync.Character.load(sc.character_dir) if sc.character_dir.strip() else None
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="vstudio_scenes_"))
@@ -145,7 +166,12 @@ def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: P
             cues += [captions.Cue(c.start + t, c.end + t, c.text) for c in scene_cues]
             part = work / f"scene_{n:03d}.mp4"
             motion = MOTIONS[n % len(MOTIONS)] if sc.motion else "none"
-            _render_scene(ffmpeg, scene, motion, duration, voice_path, settings, part, cancel)
+            char_frames = None
+            if char is not None:
+                mouth = (lipsync.mouth_cues(voice_path, ffmpeg, settings.output.fps, work, sc.lipsync)
+                         if voice_path is not None else [])
+                char_frames = lipsync.build_frames(char, mouth, duration, ffmpeg, work, seed=n)
+            _render_scene(ffmpeg, scene, motion, duration, voice_path, settings, part, cancel, char_frames)
             parts.append(part)
             t += duration
 

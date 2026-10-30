@@ -11,6 +11,7 @@ App desktop (Python + PySide6 + FFmpeg) dựng video ngắn giới thiệu sản
 - Hoặc dùng file giọng tự thu (mp3, m4a, wav): độ dài video theo file, phụ đề chia đều lời thoại theo thời gian.
 - Trộn âm thanh gốc, voice và nhạc nền với âm lượng riêng.
 - **Hoạt hình theo cảnh** (tab Hoạt hình): viết kịch bản, mỗi đoạn là một cảnh gắn một ảnh (nhân vật/bối cảnh bạn tự vẽ hoặc có quyền dùng). App đọc lời từng cảnh, cho ảnh chuyển động (zoom, lia), mờ chuyển cảnh, thêm phụ đề, tiêu đề, nhạc nền.
+- **Nhân vật nói khớp miệng**: chọn thư mục nhân vật (thân + các hình miệng, xem `examples/nhan_vat_mau`), nhân vật đứng trong cảnh, miệng cử động theo giọng đọc và tự chớp mắt.
 - Preset lưu thành JSON trong `~/.video_studio/presets`.
 - Xuất hàng loạt N phiên bản (mỗi bản một cách cắt khác), có nút dừng và preview nhanh độ phân giải thấp.
 
@@ -40,12 +41,20 @@ Một hôm, chú quyết định đi câu cá.
 
 Khi bật giọng AI, mỗi cảnh dài bằng lời đọc cộng thời gian nghỉ; khi tắt voice, mỗi cảnh dài theo "Giây/cảnh". Dùng 16:9 cho video YouTube thường, 9:16 cho Shorts.
 
+## Nhân vật nói khớp miệng
+
+Khẩu hình miệng lấy theo một trong hai cách:
+
+- **Theo độ to giọng đọc** (mặc định khi chưa có Rhubarb): không cần cài thêm, miệng đóng/mở theo âm lượng.
+- **[Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync)** (MIT): chính xác hơn, phân biệt được khẩu hình A–H. Tải bản cho hệ điều hành của bạn ở trang Releases, giải nén vào thư mục `rhubarb` cạnh app (hoặc đặt biến `VSTUDIO_RHUBARB`). App dùng bộ nhận dạng `phonetic` (không phụ thuộc ngôn ngữ) cho giọng tiếng Việt.
+
 ## Kiểm thử
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
 VSTUDIO_TEST_TTS=1 pytest -k "tts or voice"   # thêm test gọi Edge TTS thật, cần mạng
+VSTUDIO_RHUBARB=đường/dẫn/rhubarb pytest -k rhubarb   # test khớp miệng bằng Rhubarb
 ```
 
 GitHub Actions (`.github/workflows/tests.yml`) chạy toàn bộ test trên Windows và Ubuntu, gồm cả test Edge TTS thật và test kiểm tra tiêu đề tiếng Việt thực sự được vẽ lên khung hình.
@@ -60,6 +69,7 @@ GitHub Actions (`.github/workflows/tests.yml`) chạy toàn bộ test trên Wind
 | `video_studio/voice.py` | Edge TTS + mốc thời gian từng từ |
 | `video_studio/pipeline.py` | Gọi FFmpeg: cắt, nối, chèn chữ, trộn âm, xuất hàng loạt |
 | `video_studio/scenes.py` | Hoạt hình theo cảnh: đọc kịch bản, ảnh chuyển động, ghép cảnh |
+| `video_studio/lipsync.py` | Nhân vật nói khớp miệng: khẩu hình từ Rhubarb hoặc độ to, chớp mắt |
 | `video_studio/gui/main_window.py` | Giao diện PySide6 |
 
 ## Lưu ý sử dụng
