@@ -10,6 +10,7 @@ App desktop (Python + PySide6 + FFmpeg) dựng video ngắn giới thiệu sản
 - Giọng đọc AI bằng Edge TTS (Hoài My, Nam Minh). Phụ đề lấy mốc thời gian từng từ của giọng đọc, độ dài video bám theo lời đọc. Lỗi mạng được thử lại và báo rõ ràng.
 - Hoặc dùng file giọng tự thu (mp3, m4a, wav): độ dài video theo file, phụ đề chia đều lời thoại theo thời gian.
 - Trộn âm thanh gốc, voice và nhạc nền với âm lượng riêng.
+- **Hoạt hình theo cảnh** (tab Hoạt hình): viết kịch bản, mỗi đoạn là một cảnh gắn một ảnh (nhân vật/bối cảnh bạn tự vẽ hoặc có quyền dùng). App đọc lời từng cảnh, cho ảnh chuyển động (zoom, lia), mờ chuyển cảnh, thêm phụ đề, tiêu đề, nhạc nền.
 - Preset lưu thành JSON trong `~/.video_studio/presets`.
 - Xuất hàng loạt N phiên bản (mỗi bản một cách cắt khác), có nút dừng và preview nhanh độ phân giải thấp.
 
@@ -25,6 +26,19 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip
 .venv/bin/python -m video_studio
 ```
+
+## Kịch bản hoạt hình
+
+Các cảnh cách nhau bởi một dòng trống. Dòng đầu của cảnh có thể là `[tên_ảnh.png]` (tính theo thư mục ảnh). Cảnh không ghi ảnh dùng ảnh tiếp theo trong thư mục (sắp theo tên), hết ảnh thì dùng lại ảnh của cảnh trước.
+
+```text
+[01_meo_ngu.png]
+Ngày xửa ngày xưa, có một chú mèo lười.
+
+Một hôm, chú quyết định đi câu cá.
+```
+
+Khi bật giọng AI, mỗi cảnh dài bằng lời đọc cộng thời gian nghỉ; khi tắt voice, mỗi cảnh dài theo "Giây/cảnh". Dùng 16:9 cho video YouTube thường, 9:16 cho Shorts.
 
 ## Kiểm thử
 
@@ -45,6 +59,7 @@ GitHub Actions (`.github/workflows/tests.yml`) chạy toàn bộ test trên Wind
 | `video_studio/captions.py` | Tạo file ASS cho tiêu đề và phụ đề |
 | `video_studio/voice.py` | Edge TTS + mốc thời gian từng từ |
 | `video_studio/pipeline.py` | Gọi FFmpeg: cắt, nối, chèn chữ, trộn âm, xuất hàng loạt |
+| `video_studio/scenes.py` | Hoạt hình theo cảnh: đọc kịch bản, ảnh chuyển động, ghép cảnh |
 | `video_studio/gui/main_window.py` | Giao diện PySide6 |
 
 ## Lưu ý sử dụng
