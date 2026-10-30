@@ -71,6 +71,18 @@ class AudioSettings:
 
 
 @dataclass
+class SceneSettings:
+    """Chế độ hoạt hình theo cảnh: mỗi đoạn kịch bản là một cảnh với một ảnh."""
+    script: str = ""
+    image_dir: str = ""  # thư mục ảnh; đoạn không ghi [ảnh] sẽ lấy ảnh tiếp theo trong thư mục
+    seconds_per_scene: float = 4.0  # độ dài mỗi cảnh khi không bật voice
+    pause: float = 0.4  # nghỉ sau lời đọc của mỗi cảnh, giây
+    motion: bool = True  # zoom/lia ảnh (hiệu ứng Ken Burns)
+    zoom: float = 0.15  # mức zoom/lia, 0.15 = 15%
+    fade: float = 0.3  # mờ dần đầu/cuối mỗi cảnh, giây
+
+
+@dataclass
 class RenderSettings:
     cut: CutSettings = field(default_factory=CutSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
@@ -78,6 +90,7 @@ class RenderSettings:
     subtitle: SubtitleSettings = field(default_factory=SubtitleSettings)
     voice: VoiceSettings = field(default_factory=VoiceSettings)
     audio: AudioSettings = field(default_factory=AudioSettings)
+    scene: SceneSettings = field(default_factory=SceneSettings)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

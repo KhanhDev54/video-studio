@@ -99,6 +99,43 @@ def _render_segment(ffmpeg: str, seg: Segment, has_audio: bool, settings: Render
     _run(cmd, cancel)
 
 
+def finish_video(ffmpeg: str, work: Path, parts: list[Path], duration: float, cues: list[captions.Cue],
+                 settings: RenderSettings, base_volume: float, extra_audio: list[tuple[Path, float]],
+                 cancel: threading.Event | None) -> Path:
+    """Nối các đoạn (cùng codec) trong `work`, vẽ tiêu đề + phụ đề, trộn âm thanh của đoạn
+    (âm lượng base_volume) với các track thêm và nhạc nền. Trả về file kết quả trong `work`."""
+    (work / "list.txt").write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
+    _run([ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "list.txt",
+          "-c", "copy", "base.mp4"], cancel, cwd=work)
+
+    o = settings.output
+    ass = captions.build_ass(o.width, o.height, duration, settings.title, settings.subtitle, cues)
+    (work / "captions.ass").write_text(ass, encoding="utf-8")
+
+    a = settings.audio
+    inputs = ["-i", "base.mp4"]
+    mix = [f"[0:a]volume={base_volume}[a0]"]
+    labels = ["[a0]"]
+    for path, volume in extra_audio:
+        inputs += ["-i", str(Path(path).resolve())]
+        mix.append(f"[{len(labels)}:a]volume={volume}[a{len(labels)}]")
+        labels.append(f"[a{len(labels)}]")
+    if a.music_path:
+        inputs += ["-stream_loop", "-1", "-i", str(Path(a.music_path).resolve())]
+        mix.append(f"[{len(labels)}:a]volume={a.music_volume}[a{len(labels)}]")
+        labels.append(f"[a{len(labels)}]")
+    graph = ";".join(
+        ["[0:v]subtitles=captions.ass[v]"] + mix
+        + [f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:normalize=0[a]"]
+    )
+    out = work / "final.mp4"
+    _run([ffmpeg, "-y", "-v", "error", *inputs, "-filter_complex", graph,
+          "-map", "[v]", "-map", "[a]", "-t", f"{duration:.3f}",
+          "-c:v", "libx264", "-preset", o.preset, "-crf", str(o.crf),
+          "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out.name], cancel, cwd=work)
+    return out
+
+
 def render_one(clips: list[str | Path], settings: RenderSettings, out_path: str | Path, *,
                seed: int | None = None, voice_track: VoiceTrack | None = None,
                progress: Progress = _noop, cancel: threading.Event | None = None) -> Path:
@@ -134,37 +171,12 @@ def render_one(clips: list[str | Path], settings: RenderSettings, out_path: str 
             parts.append(part)
 
         progress(0.82, "Nối đoạn")
-        (work / "list.txt").write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
-        _run([ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "list.txt",
-              "-c", "copy", "base.mp4"], cancel, cwd=work)
-
-        progress(0.88, "Chèn chữ và trộn âm thanh")
         duration = sum(s.duration for s in segments)
-        o = settings.output
-        ass = captions.build_ass(o.width, o.height, duration, settings.title, settings.subtitle, cues)
-        (work / "captions.ass").write_text(ass, encoding="utf-8")
-
         a = settings.audio
-        inputs = ["-i", "base.mp4"]
-        mix = [f"[0:a]volume={a.original_volume if a.keep_original else 0}[a0]"]
-        labels = ["[a0]"]
-        if voice_track is not None:
-            inputs += ["-i", str(voice_track.path.resolve())]
-            mix.append(f"[{len(labels)}:a]volume={settings.voice.volume}[a{len(labels)}]")
-            labels.append(f"[a{len(labels)}]")
-        if a.music_path:
-            inputs += ["-stream_loop", "-1", "-i", str(Path(a.music_path).resolve())]
-            mix.append(f"[{len(labels)}:a]volume={a.music_volume}[a{len(labels)}]")
-            labels.append(f"[a{len(labels)}]")
-        graph = ";".join(
-            ["[0:v]subtitles=captions.ass[v]"] + mix
-            + [f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:normalize=0[a]"]
-        )
-        tmp_out = work / "final.mp4"
-        _run([ffmpeg, "-y", "-v", "error", *inputs, "-filter_complex", graph,
-              "-map", "[v]", "-map", "[a]", "-t", f"{duration:.3f}",
-              "-c:v", "libx264", "-preset", o.preset, "-crf", str(o.crf),
-              "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", tmp_out.name], cancel, cwd=work)
+        extra = [(voice_track.path, settings.voice.volume)] if voice_track is not None else []
+        progress(0.88, "Chèn chữ và trộn âm thanh")
+        tmp_out = finish_video(ffmpeg, work, parts, duration, cues, settings,
+                               a.original_volume if a.keep_original else 0, extra, cancel)
         shutil.move(str(tmp_out), out_path)
         progress(1.0, "Xong")
         return out_path

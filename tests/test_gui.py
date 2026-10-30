@@ -52,3 +52,27 @@ def test_voice_file_source_roundtrip(window):
     window.apply_settings(s)
     assert window.collect_settings() == s
     assert not window.voice_name.isEnabled() and window.voice_file.isEnabled()
+
+
+def test_scene_settings_roundtrip(window):
+    from video_studio.settings import RenderSettings
+
+    s = RenderSettings()
+    s.scene.script = "[a.png]\nCảnh một.\n\nCảnh hai."
+    s.scene.image_dir, s.scene.seconds_per_scene, s.scene.motion = "D:/Ảnh", 2.5, False
+    s.scene.zoom, s.scene.fade, s.scene.pause = 0.25, 0.5, 0.8
+    window.apply_settings(s)
+    assert window.collect_settings() == s
+
+
+def test_scene_export_does_not_need_clips(window, tmp_path, monkeypatch):
+    from video_studio.gui import main_window
+
+    calls = []
+    monkeypatch.setattr(main_window, "render_scenes", lambda s, out, **kw: calls.append(out) or out)
+    window.out_dir.setText(str(tmp_path))
+    (tmp_path / "video_hoathinh.mp4").write_bytes(b"")
+    window._export_scenes()
+    window.thread.quit()  # thoát vòng sự kiện của luồng ngay khi job xong
+    assert window.thread.wait(5000)
+    assert calls == [tmp_path / "video_hoathinh_2.mp4"]

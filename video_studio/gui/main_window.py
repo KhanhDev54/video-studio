@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..media import VIDEO_EXTS, find_videos
 from ..pipeline import Cancelled, render_batch, render_one
+from ..scenes import render_scenes
 from ..settings import PresetStore, RenderSettings
 from ..voice import VIETNAMESE_VOICES
 
@@ -316,6 +317,48 @@ class MainWindow(QMainWindow):
         f.addRow("Âm lượng nhạc", self.music_volume)
         tabs.addTab(t, "Âm thanh")
 
+        # Hoạt hình theo cảnh
+        t = QWidget()
+        f = QFormLayout(t)
+        self.scene_script = QPlainTextEdit()
+        self.scene_script.setPlaceholderText(
+            "Mỗi cảnh một đoạn, cách nhau bởi một dòng trống.\n"
+            "Dòng đầu có thể là [tên_ảnh.png] để chọn ảnh cho cảnh.\n\n"
+            "[meo_ngu.png]\nNgày xửa ngày xưa, có một chú mèo lười.\n\n"
+            "Một hôm, chú quyết định đi câu cá.")
+        image_row = QHBoxLayout()
+        self.scene_dir = QLineEdit()
+        self.scene_dir.setPlaceholderText("Thư mục ảnh nhân vật/bối cảnh của bạn")
+        pick = QPushButton("…")
+        pick.setFixedWidth(32)
+        pick.clicked.connect(self._pick_scene_dir)
+        image_row.addWidget(self.scene_dir)
+        image_row.addWidget(pick)
+        self.scene_seconds = _spin(0.5, 60, 4)
+        self.scene_pause = _spin(0, 5, 0.4, 0.1)
+        self.scene_motion = QCheckBox("Ảnh chuyển động (zoom, lia)")
+        self.scene_zoom = _spin(0, 0.5, 0.15, 0.05, 2)
+        self.scene_fade = _spin(0, 2, 0.3, 0.1)
+        scene_btns = QHBoxLayout()
+        self.scene_preview_btn = QPushButton("Preview hoạt hình")
+        self.scene_preview_btn.clicked.connect(self._preview_scenes)
+        self.scene_export_btn = QPushButton("Xuất video hoạt hình")
+        self.scene_export_btn.setObjectName("export")
+        self.scene_export_btn.clicked.connect(self._export_scenes)
+        scene_btns.addWidget(self.scene_preview_btn)
+        scene_btns.addWidget(self.scene_export_btn)
+        f.addRow("Kịch bản", self.scene_script)
+        f.addRow("Thư mục ảnh", image_row)
+        f.addRow("Giây/cảnh (khi tắt voice)", self.scene_seconds)
+        f.addRow("Nghỉ sau lời đọc (s)", self.scene_pause)
+        f.addRow(self.scene_motion)
+        f.addRow("Mức zoom/lia", self.scene_zoom)
+        f.addRow("Mờ chuyển cảnh (s)", self.scene_fade)
+        f.addRow(QLabel("Giọng đọc, phụ đề, tiêu đề, nhạc nền và khung hình lấy từ các tab khác.\n"
+                        "Chỉ dùng ảnh bạn tự vẽ, tự tạo hoặc có quyền sử dụng."))
+        f.addRow(scene_btns)
+        tabs.addTab(t, "Hoạt hình")
+
         # Preset
         t = QWidget()
         f = QFormLayout(t)
@@ -372,6 +415,13 @@ class MainWindow(QMainWindow):
         s.audio.original_volume = self.orig_volume.value()
         s.audio.music_path = self.music_path.text().strip()
         s.audio.music_volume = self.music_volume.value()
+        s.scene.script = self.scene_script.toPlainText()
+        s.scene.image_dir = self.scene_dir.text().strip()
+        s.scene.seconds_per_scene = self.scene_seconds.value()
+        s.scene.pause = self.scene_pause.value()
+        s.scene.motion = self.scene_motion.isChecked()
+        s.scene.zoom = self.scene_zoom.value()
+        s.scene.fade = self.scene_fade.value()
         return s
 
     def apply_settings(self, s: RenderSettings) -> None:
@@ -410,6 +460,13 @@ class MainWindow(QMainWindow):
         self.orig_volume.setValue(s.audio.original_volume)
         self.music_path.setText(s.audio.music_path)
         self.music_volume.setValue(s.audio.music_volume)
+        self.scene_script.setPlainText(s.scene.script)
+        self.scene_dir.setText(s.scene.image_dir)
+        self.scene_seconds.setValue(s.scene.seconds_per_scene)
+        self.scene_pause.setValue(s.scene.pause)
+        self.scene_motion.setChecked(s.scene.motion)
+        self.scene_zoom.setValue(s.scene.zoom)
+        self.scene_fade.setValue(s.scene.fade)
 
     # ---------- hành động ----------
     def clips(self) -> list[str]:
@@ -440,6 +497,11 @@ class MainWindow(QMainWindow):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn nhạc nền", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
         if f:
             self.music_path.setText(f)
+
+    def _pick_scene_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "Chọn thư mục ảnh", self.scene_dir.text())
+        if d:
+            self.scene_dir.setText(d)
 
     def _pick_voice_file(self):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn file thu âm", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
@@ -494,8 +556,8 @@ class MainWindow(QMainWindow):
         else:
             self.player.play()
 
-    def _start(self, fn, on_done):
-        if not self.clips():
+    def _start(self, fn, on_done, need_clips: bool = True):
+        if need_clips and not self.clips():
             QMessageBox.information(self, "Thiếu video", "Hãy chọn ít nhất một video nguồn.")
             return
         self.cancel.clear()
@@ -514,8 +576,8 @@ class MainWindow(QMainWindow):
         self.thread.start()
 
     def _busy(self, busy: bool):
-        self.export_btn.setEnabled(not busy)
-        self.preview_btn.setEnabled(not busy)
+        for b in (self.export_btn, self.preview_btn, self.scene_export_btn, self.scene_preview_btn):
+            b.setEnabled(not busy)
         self.stop_btn.setEnabled(busy)
 
     def _export(self):
@@ -528,9 +590,9 @@ class MainWindow(QMainWindow):
 
         self._start(job, lambda paths: self.status.setText(f"Đã xuất {len(paths)} video vào {out_dir}"))
 
-    def _preview(self):
-        clips, s = self.clips(), self.collect_settings()
-        # Preview dựng ở độ phân giải thấp cho nhanh; tỉ lệ giữ nguyên.
+    def _preview_settings(self) -> RenderSettings:
+        """Cài đặt hiện tại thu nhỏ còn cạnh dài ~720 px để dựng preview nhanh."""
+        s = self.collect_settings()
         scale = 360 / max(s.output.width, s.output.height) * 2
         s.output.width = int(s.output.width * scale) // 2 * 2
         s.output.height = int(s.output.height * scale) // 2 * 2
@@ -539,24 +601,52 @@ class MainWindow(QMainWindow):
             st.font_size = max(8, int(st.font_size * scale))
             st.margin_v = int(st.margin_v * scale)
             st.outline = max(1, int(st.outline * scale))
+        return s
+
+    def _play_preview(self, paths):
+        self.status.setText(f"Preview: {paths[0]}")
+        if self.player is not None:
+            self.player.setSource(QUrl.fromLocalFile(str(paths[0])))
+            self.player.play()
+
+    def _preview(self):
+        clips, s = self.clips(), self._preview_settings()
         out = self.preview_dir / f"preview_{os.getpid()}_{id(s)}.mp4"
 
         def job(progress, cancel):
             return [render_one(clips, s, out, seed=1, progress=progress, cancel=cancel)]
 
-        def done(paths):
-            self.status.setText(f"Preview: {paths[0]}")
-            if self.player is not None:
-                self.player.setSource(QUrl.fromLocalFile(str(paths[0])))
-                self.player.play()
+        self._start(job, self._play_preview)
 
-        self._start(job, done)
+    def _preview_scenes(self):
+        s = self._preview_settings()
+        out = self.preview_dir / f"scenes_{os.getpid()}_{id(s)}.mp4"
+
+        def job(progress, cancel):
+            return [render_scenes(s, out, progress=progress, cancel=cancel)]
+
+        self._start(job, self._play_preview, need_clips=False)
+
+    def _export_scenes(self):
+        s = self.collect_settings()
+        out_dir = Path(self.out_dir.text())
+        base = self.base_name.text().strip() or "video"
+        out, i = out_dir / f"{base}_hoathinh.mp4", 2
+        while out.exists():  # không ghi đè video đã xuất
+            out, i = out_dir / f"{base}_hoathinh_{i}.mp4", i + 1
+
+        def job(progress, cancel):
+            return [render_scenes(s, out, progress=progress, cancel=cancel)]
+
+        self._start(job, lambda paths: self.status.setText(f"Đã xuất {paths[0]}"), need_clips=False)
 
     def closeEvent(self, event):
         self.cancel.set()
         # Chờ luồng dựng dừng hẳn (ffmpeg bị kill) để tránh lỗi "QThread destroyed while running".
         try:
             if self.thread is not None and self.thread.isRunning():
+                # quit() gọi thẳng: tín hiệu finished->quit xếp hàng ở luồng chính đang bị chặn.
+                self.thread.quit()
                 self.thread.wait(5000)
         except RuntimeError:  # QThread đã bị deleteLater
             pass
