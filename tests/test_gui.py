@@ -41,3 +41,14 @@ def test_preset_save_and_apply(window):
     window.preset_combo.setCurrentText("gia dụng")
     window._load_preset()
     assert window.title_text.text() == "Gia dụng"
+
+
+def test_voice_file_source_roundtrip(window):
+    from video_studio.settings import RenderSettings
+
+    s = RenderSettings()
+    s.voice.enabled, s.voice.source, s.voice.file_path = True, "file", "C:/Thu âm/giới thiệu.m4a"
+    s.voice.text = "Sạch bong không cần cúi"
+    window.apply_settings(s)
+    assert window.collect_settings() == s
+    assert not window.voice_name.isEnabled() and window.voice_file.isEnabled()

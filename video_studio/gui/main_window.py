@@ -265,7 +265,18 @@ class MainWindow(QMainWindow):
         # Voice
         t = QWidget()
         f = QFormLayout(t)
-        self.voice_on = QCheckBox("Tạo giọng đọc AI (Edge TTS, cần mạng)")
+        self.voice_on = QCheckBox("Dùng giọng đọc")
+        self.voice_source = QComboBox()
+        self.voice_source.addItem("Giọng AI (Edge TTS, cần mạng)", "tts")
+        self.voice_source.addItem("File thu âm của bạn", "file")
+        voice_file_row = QHBoxLayout()
+        self.voice_file = QLineEdit()
+        self.voice_file.setPlaceholderText("File giọng tự thu (mp3, m4a, wav)")
+        pick_voice = QPushButton("…")
+        pick_voice.setFixedWidth(32)
+        pick_voice.clicked.connect(self._pick_voice_file)
+        voice_file_row.addWidget(self.voice_file)
+        voice_file_row.addWidget(pick_voice)
         self.voice_name = QComboBox()
         for key, label in VIETNAMESE_VOICES.items():
             self.voice_name.addItem(label, key)
@@ -275,10 +286,14 @@ class MainWindow(QMainWindow):
         self.voice_text = QPlainTextEdit()
         self.voice_text.setPlaceholderText("Lời thoại giới thiệu sản phẩm…")
         f.addRow(self.voice_on)
+        f.addRow("Nguồn giọng", self.voice_source)
+        f.addRow("File thu âm", voice_file_row)
         f.addRow("Giọng", self.voice_name)
         f.addRow("Tốc độ", self.voice_rate)
         f.addRow("Âm lượng", self.voice_volume)
         f.addRow("Lời thoại", self.voice_text)
+        f.addRow(QLabel("Với file thu âm, lời thoại chỉ dùng làm phụ đề (chia đều theo độ dài file)."))
+        self.voice_source.currentIndexChanged.connect(self._update_voice_source)
         tabs.addTab(t, "Voice")
 
         # Âm thanh
@@ -347,6 +362,8 @@ class MainWindow(QMainWindow):
         s.subtitle.margin_v = self.sub_margin.value()
         s.subtitle.max_words = self.sub_words.value()
         s.voice.enabled = self.voice_on.isChecked()
+        s.voice.source = self.voice_source.currentData()
+        s.voice.file_path = self.voice_file.text().strip()
         s.voice.voice = self.voice_name.currentData()
         s.voice.rate = f"{self.voice_rate.value():+d}%"
         s.voice.volume = self.voice_volume.value()
@@ -379,6 +396,9 @@ class MainWindow(QMainWindow):
         self.sub_margin.setValue(s.subtitle.margin_v)
         self.sub_words.setValue(s.subtitle.max_words)
         self.voice_on.setChecked(s.voice.enabled)
+        self.voice_source.setCurrentIndex(max(self.voice_source.findData(s.voice.source), 0))
+        self.voice_file.setText(s.voice.file_path)
+        self._update_voice_source()
         self.voice_name.setCurrentIndex(max(self.voice_name.findData(s.voice.voice), 0))
         try:
             self.voice_rate.setValue(int(s.voice.rate.rstrip("%")))
@@ -420,6 +440,17 @@ class MainWindow(QMainWindow):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn nhạc nền", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
         if f:
             self.music_path.setText(f)
+
+    def _pick_voice_file(self):
+        f, _ = QFileDialog.getOpenFileName(self, "Chọn file thu âm", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
+        if f:
+            self.voice_file.setText(f)
+
+    def _update_voice_source(self):
+        tts = self.voice_source.currentData() == "tts"
+        self.voice_name.setEnabled(tts)
+        self.voice_rate.setEnabled(tts)
+        self.voice_file.setEnabled(not tts)
 
     def _open_out_dir(self):
         from PySide6.QtGui import QDesktopServices
@@ -523,6 +554,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.cancel.set()
+        # Chờ luồng dựng dừng hẳn (ffmpeg bị kill) để tránh lỗi "QThread destroyed while running".
+        try:
+            if self.thread is not None and self.thread.isRunning():
+                self.thread.wait(5000)
+        except RuntimeError:  # QThread đã bị deleteLater
+            pass
         super().closeEvent(event)
 
 

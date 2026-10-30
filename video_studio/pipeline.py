@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import captions, voice
-from .media import probe, require_ffmpeg
+from .media import NO_WINDOW, probe, require_ffmpeg
 from .planner import Segment, plan_segments
 from .settings import RenderSettings
 
@@ -35,7 +35,7 @@ def _noop(_f: float, _m: str) -> None:
 
 def _run(cmd: list[str], cancel: threading.Event | None, cwd: Path | None = None) -> None:
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=cwd,
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                            creationflags=NO_WINDOW)
     while True:
         try:
             _, err = proc.communicate(timeout=0.3)
@@ -59,6 +59,15 @@ def prepare_voice(settings: RenderSettings, workdir: Path) -> VoiceTrack | None:
     v = settings.voice
     if not v.enabled:
         return None
+    if v.source == "file":
+        # Giọng tự thu: không có mốc từng từ nên phụ đề chia đều lời thoại theo độ dài file.
+        path = Path(v.file_path)
+        if not v.file_path.strip() or not path.is_file():
+            raise ValueError("Chưa chọn file thu âm cho voice hoặc file không tồn tại")
+        duration = probe(path).duration
+        if duration <= 0:
+            raise ValueError(f"File thu âm {path.name} không có âm thanh")
+        return VoiceTrack(path, duration, captions.even_cues(v.text, duration, settings.subtitle.max_words))
     out = Path(workdir) / "voice.mp3"
     words = voice.synthesize(v.text, v.voice, v.rate, out)
     cues = captions.group_words(words, settings.subtitle.max_words)
