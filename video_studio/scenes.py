@@ -99,14 +99,14 @@ def _overlay_xy(side: str, width: int) -> tuple[str, str]:
 def _render_scene(ffmpeg: str, scene: Scene, motion: str, duration: float, voice_path: Path | None,
                   settings: RenderSettings, out: Path, cancel: threading.Event | None,
                   character: Path | None = None) -> None:
-    """`character`: danh sách concat khung hình nhân vật (từ lipsync.build_frames) để phủ lên cảnh."""
+    """`character`: mẫu chuỗi khung hình nhân vật (từ lipsync.build_frames) để phủ lên cảnh."""
     o, sc = settings.output, settings.scene
     frames = max(1, round(duration * o.fps))
     vf = _motion_filter(motion, o.width, o.height, o.fps, frames, sc.zoom if sc.motion else 0)
     if character is not None:
         ch = max(2, int(o.height * sc.character_height) // 2 * 2)
         x, y = _overlay_xy(sc.character_side, o.width)
-        vf = (f"[0:v]{vf}[bg];[2:v]fps={o.fps},scale=-2:{ch},format=rgba[ch];"
+        vf = (f"[0:v]{vf}[bg];[2:v]scale=-2:{ch},format=rgba[ch];"
               f"[bg][ch]overlay=x={x}:y={y}:format=auto")
     fade = min(sc.fade, duration / 3)
     if fade > 0:
@@ -121,7 +121,7 @@ def _render_scene(ffmpeg: str, scene: Scene, motion: str, duration: float, voice
     else:
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
     if character is not None:
-        cmd += ["-f", "concat", "-safe", "0", "-i", str(character)]
+        cmd += ["-framerate", str(o.fps), "-start_number", "0", "-i", str(character)]
         cmd += ["-filter_complex", vf, "-map", "[v]"]
     else:
         cmd += ["-vf", vf, "-map", "0:v:0"]
@@ -170,7 +170,7 @@ def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: P
             if char is not None:
                 mouth = (lipsync.mouth_cues(voice_path, ffmpeg, settings.output.fps, work, sc.lipsync)
                          if voice_path is not None else [])
-                char_frames = lipsync.build_frames(char, mouth, duration, ffmpeg, work, seed=n)
+                char_frames = lipsync.build_frames(char, mouth, duration, settings.output.fps, ffmpeg, work, seed=n)
             _render_scene(ffmpeg, scene, motion, duration, voice_path, settings, part, cancel, char_frames)
             parts.append(part)
             t += duration

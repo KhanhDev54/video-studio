@@ -57,20 +57,22 @@ def test_loudness_cues_follow_audio(speechlike):
     assert all(round((c.end - c.start) * 25) >= lipsync.MIN_HOLD for c in cues[1:-1])
 
 
-def test_build_frames_concat_list(character, tmp_path):
+def test_build_frames_sequence(character, tmp_path):
     ffmpeg, _ = require_ffmpeg()
     ch = lipsync.Character.load(character)
     cues = [lipsync.MouthCue(0, 1, "X"), lipsync.MouthCue(1, 2, "D"), lipsync.MouthCue(2, 6, "X")]
-    listing = lipsync.build_frames(ch, cues, 6.0, ffmpeg, tmp_path, seed=1)
-    lines = listing.read_text(encoding="utf-8").splitlines()
-    durations = [float(l.split()[1]) for l in lines if l.startswith("duration")]
-    assert sum(durations) == pytest.approx(6.0, abs=1e-3)
-    assert any("_blink" in l for l in lines)  # có chớp mắt trong 6 giây
-    # Video từ danh sách đọc được và giữ kênh alpha.
+    pattern = lipsync.build_frames(ch, cues, 6.0, 25, ffmpeg, tmp_path, seed=1)
+    frames = sorted(pattern.parent.glob("f_*.png"))
+    assert len(frames) == 150
+    same = lambda a, b: a.read_bytes() == b.read_bytes()  # noqa: E731
+    assert same(frames[37], tmp_path / "char_D.png") and same(frames[5], frames[60])
+    assert not same(frames[5], frames[37])
+    blinks = lipsync.blink_times(6.0, 1)
+    assert blinks and same(frames[int(blinks[0][0] * 25) + 1], tmp_path / "char_D_blink.png")  # chớp mắt lúc đang nói (1.2 s)
     out = tmp_path / "char.mov"
-    subprocess.run([ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
-                    "-vf", "fps=10", "-c:v", "png", str(out)], check=True)
-    assert probe(out).duration == pytest.approx(6.0, abs=0.3)
+    subprocess.run([ffmpeg, "-y", "-v", "error", "-framerate", "25", "-start_number", "0", "-i", str(pattern),
+                    "-c:v", "png", str(out)], check=True)
+    assert probe(out).duration == pytest.approx(6.0, abs=0.15)
 
 
 def _scene_settings(image_dir: Path, character: Path) -> RenderSettings:
