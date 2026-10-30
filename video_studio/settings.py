@@ -54,7 +54,9 @@ class SubtitleSettings:
 @dataclass
 class VoiceSettings:
     enabled: bool = False
-    text: str = ""
+    source: str = "tts"  # "tts" (Edge TTS) hoặc "file" (file thu âm của bạn)
+    file_path: str = ""  # dùng khi source == "file"
+    text: str = ""  # lời thoại; với "file" chỉ dùng để làm phụ đề (chia đều theo thời gian)
     voice: str = "vi-VN-HoaiMyNeural"
     rate: str = "+0%"
     volume: float = 1.0
@@ -99,6 +101,10 @@ def _build(cls, data: dict[str, Any]):
     return cls(**kwargs)
 
 
+_WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                     *(f"LPT{i}" for i in range(1, 10))}
+
+
 class PresetStore:
     """Lưu preset dạng file JSON trong một thư mục."""
 
@@ -110,6 +116,8 @@ class PresetStore:
         safe = "".join(c for c in name if c.isalnum() or c in " -_").strip()
         if not safe:
             raise ValueError("Tên preset không hợp lệ")
+        if safe.upper() in _WINDOWS_RESERVED:
+            safe += "_"  # Windows không cho tạo file tên CON, NUL, COM1...
         return self.folder / f"{safe}.json"
 
     def names(self) -> list[str]:

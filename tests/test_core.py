@@ -111,7 +111,21 @@ def test_render_batch_makes_n_files(clips, tmp_path):
     assert all(p.exists() for p in outs)
 
 
-@pytest.mark.skipif(not os.environ.get("VSTUDIO_TEST_TTS"), reason="cần mạng; đặt VSTUDIO_TEST_TTS=1 để chạy")
+needs_tts = pytest.mark.skipif(not os.environ.get("VSTUDIO_TEST_TTS"), reason="cần mạng; đặt VSTUDIO_TEST_TTS=1 để chạy")
+
+
+@needs_tts
+def test_edge_tts_returns_word_timings(tmp_path):
+    from video_studio import voice
+
+    out = tmp_path / "v.mp3"
+    words = voice.synthesize("Cây chà sàn ba trong một.", "vi-VN-HoaiMyNeural", "+0%", out)
+    assert out.stat().st_size > 1000 and probe(out).duration > 0.5
+    assert len(words) >= 4 and all(w.end > w.start >= 0 for w in words)
+    assert "chà" in " ".join(w.text for w in words)
+
+
+@needs_tts
 def test_render_with_voice(clips, tmp_path):
     s = small_settings()
     s.voice.enabled = True
