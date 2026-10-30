@@ -339,6 +339,22 @@ class MainWindow(QMainWindow):
         self.scene_motion = QCheckBox("Ảnh chuyển động (zoom, lia)")
         self.scene_zoom = _spin(0, 0.5, 0.15, 0.05, 2)
         self.scene_fade = _spin(0, 2, 0.3, 0.1)
+        char_row = QHBoxLayout()
+        self.char_dir = QLineEdit()
+        self.char_dir.setPlaceholderText("Thư mục nhân vật: body.png + mouth_X.png, mouth_D.png… (để trống nếu không dùng)")
+        pick_char = QPushButton("…")
+        pick_char.setFixedWidth(32)
+        pick_char.clicked.connect(self._pick_char_dir)
+        char_row.addWidget(self.char_dir)
+        char_row.addWidget(pick_char)
+        self.char_side = QComboBox()
+        for label, key in (("Bên phải", "right"), ("Giữa", "center"), ("Bên trái", "left")):
+            self.char_side.addItem(label, key)
+        self.char_height = _spin(0.1, 1, 0.55, 0.05, 2)
+        self.lipsync_mode = QComboBox()
+        self.lipsync_mode.addItem("Tự động (Rhubarb nếu có)", "auto")
+        self.lipsync_mode.addItem("Rhubarb Lip Sync", "rhubarb")
+        self.lipsync_mode.addItem("Theo độ to giọng đọc", "loudness")
         scene_btns = QHBoxLayout()
         self.scene_preview_btn = QPushButton("Preview hoạt hình")
         self.scene_preview_btn.clicked.connect(self._preview_scenes)
@@ -354,6 +370,10 @@ class MainWindow(QMainWindow):
         f.addRow(self.scene_motion)
         f.addRow("Mức zoom/lia", self.scene_zoom)
         f.addRow("Mờ chuyển cảnh (s)", self.scene_fade)
+        f.addRow("Nhân vật nói", char_row)
+        f.addRow("Vị trí nhân vật", self.char_side)
+        f.addRow("Chiều cao nhân vật", self.char_height)
+        f.addRow("Khớp miệng", self.lipsync_mode)
         f.addRow(QLabel("Giọng đọc, phụ đề, tiêu đề, nhạc nền và khung hình lấy từ các tab khác.\n"
                         "Chỉ dùng ảnh bạn tự vẽ, tự tạo hoặc có quyền sử dụng."))
         f.addRow(scene_btns)
@@ -422,6 +442,10 @@ class MainWindow(QMainWindow):
         s.scene.motion = self.scene_motion.isChecked()
         s.scene.zoom = self.scene_zoom.value()
         s.scene.fade = self.scene_fade.value()
+        s.scene.character_dir = self.char_dir.text().strip()
+        s.scene.character_side = self.char_side.currentData()
+        s.scene.character_height = self.char_height.value()
+        s.scene.lipsync = self.lipsync_mode.currentData()
         return s
 
     def apply_settings(self, s: RenderSettings) -> None:
@@ -467,6 +491,10 @@ class MainWindow(QMainWindow):
         self.scene_motion.setChecked(s.scene.motion)
         self.scene_zoom.setValue(s.scene.zoom)
         self.scene_fade.setValue(s.scene.fade)
+        self.char_dir.setText(s.scene.character_dir)
+        self.char_side.setCurrentIndex(max(self.char_side.findData(s.scene.character_side), 0))
+        self.char_height.setValue(s.scene.character_height)
+        self.lipsync_mode.setCurrentIndex(max(self.lipsync_mode.findData(s.scene.lipsync), 0))
 
     # ---------- hành động ----------
     def clips(self) -> list[str]:
@@ -497,6 +525,11 @@ class MainWindow(QMainWindow):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn nhạc nền", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
         if f:
             self.music_path.setText(f)
+
+    def _pick_char_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "Chọn thư mục nhân vật", self.char_dir.text())
+        if d:
+            self.char_dir.setText(d)
 
     def _pick_scene_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Chọn thư mục ảnh", self.scene_dir.text())

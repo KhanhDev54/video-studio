@@ -61,6 +61,8 @@ def test_scene_settings_roundtrip(window):
     s.scene.script = "[a.png]\nCảnh một.\n\nCảnh hai."
     s.scene.image_dir, s.scene.seconds_per_scene, s.scene.motion = "D:/Ảnh", 2.5, False
     s.scene.zoom, s.scene.fade, s.scene.pause = 0.25, 0.5, 0.8
+    s.scene.character_dir, s.scene.character_side = "D:/Nhân vật/mèo", "left"
+    s.scene.character_height, s.scene.lipsync = 0.4, "loudness"
     window.apply_settings(s)
     assert window.collect_settings() == s
 
