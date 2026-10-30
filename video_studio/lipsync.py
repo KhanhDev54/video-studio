@@ -207,3 +207,37 @@ def _compose(char: Character, mouth: str, closed: bool, ffmpeg: str, workdir: Pa
     _run_text([ffmpeg, "-y", "-v", "error", *inputs, "-filter_complex", graph + ",format=rgba",
                "-frames:v", "1", str(out)])
     return out
+
+
+# ---------- dàn nhân vật cho hội thoại ----------
+
+@dataclass(frozen=True)
+class CastMember:
+    """Một nhân vật trong thư mục dàn nhân vật. Giọng đọc cấu hình bằng nhanvat.json (không bắt buộc):
+    {"voice": "vi-VN-NamMinhNeural", "rate": "+5%", "pitch": "+20Hz", "volume": 1.0, "faces": "right"}
+    `faces`: hướng nhân vật đang nhìn trong hình vẽ; app tự lật để nhân vật quay vào giữa khung."""
+    name: str
+    character: Character
+    voice: str | None = None
+    rate: str | None = None
+    pitch: str | None = None
+    volume: float = 1.0
+    faces: str | None = None
+
+
+def load_cast(folder: str | Path) -> dict[str, CastMember]:
+    """Thư mục con có body.png -> một nhân vật, tên = tên thư mục. Khoá trả về viết thường."""
+    cast: dict[str, CastMember] = {}
+    folder = Path(folder)
+    for sub in sorted(p for p in folder.iterdir() if p.is_dir() and (p / "body.png").is_file()):
+        cfg: dict = {}
+        cfg_path = sub / "nhanvat.json"
+        if cfg_path.is_file():
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8-sig"))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"File {cfg_path} sai định dạng JSON: {e}") from e
+        cast[sub.name.lower()] = CastMember(
+            name=sub.name, character=Character.load(sub), voice=cfg.get("voice"), rate=cfg.get("rate"),
+            pitch=cfg.get("pitch"), volume=float(cfg.get("volume", 1.0)), faces=cfg.get("faces"))
+    return cast

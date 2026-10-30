@@ -49,6 +49,7 @@ class SubtitleSettings:
     outline: int = 4
     margin_v: int = 300  # khoảng cách từ mép dưới, px
     max_words: int = 6  # số chữ tối đa mỗi dòng phụ đề
+    export_srt: bool = True  # ghi thêm file .srt cạnh video (tải lên YouTube làm phụ đề)
 
 
 @dataclass
@@ -59,6 +60,7 @@ class VoiceSettings:
     text: str = ""  # lời thoại; với "file" chỉ dùng để làm phụ đề (chia đều theo thời gian)
     voice: str = "vi-VN-HoaiMyNeural"
     rate: str = "+0%"
+    pitch: str = "+0Hz"
     volume: float = 1.0
 
 
@@ -68,6 +70,7 @@ class AudioSettings:
     original_volume: float = 0.3
     music_path: str = ""
     music_volume: float = 0.15
+    duck_music: bool = True  # tự hạ nhạc nền khi có lời đọc
 
 
 @dataclass
@@ -84,6 +87,7 @@ class SceneSettings:
     character_side: str = "right"  # "left", "center" hoặc "right"
     character_height: float = 0.55  # chiều cao nhân vật so với khung hình
     lipsync: str = "auto"  # "auto" (Rhubarb nếu có), "rhubarb" hoặc "loudness"
+    also_shorts: bool = False  # xuất thêm bản 9:16 cho YouTube Shorts khi khung chính không phải 9:16
 
 
 @dataclass
