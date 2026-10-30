@@ -100,7 +100,7 @@ def _frame_rgb(video: Path, t: float, x: int, y: int) -> tuple[int, int, int]:
 
 
 def test_scene_with_talking_character(character, bg_dir, speechlike, tmp_path, monkeypatch):
-    def fake_tts(text, _voice, _rate, out_path, retries=2):
+    def fake_tts(text, _voice, _rate, out_path, retries=2, **_kw):
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(speechlike), "-c", "copy", str(out_path)],
                        check=True)
         return [Cue(0.1 * i, 0.1 * i + 0.1, w) for i, w in enumerate(text.split())]

@@ -259,6 +259,8 @@ class MainWindow(QMainWindow):
         f.addRow("Màu", self.sub_color)
         f.addRow("Cách mép dưới (px)", self.sub_margin)
         f.addRow("Số chữ mỗi dòng", self.sub_words)
+        self.export_srt = QCheckBox("Xuất thêm file phụ đề .srt (tải lên YouTube)")
+        f.addRow(self.export_srt)
         lay.addWidget(g)
         lay.addStretch()
         tabs.addTab(t, "Chữ && Phụ đề")
@@ -284,6 +286,8 @@ class MainWindow(QMainWindow):
         self.voice_rate = _ispin(-50, 100, 0)
         self.voice_rate.setSuffix(" %")
         self.voice_volume = _spin(0, 3, 1, 0.1)
+        self.voice_pitch = _ispin(-100, 100, 0)
+        self.voice_pitch.setSuffix(" Hz")
         self.voice_text = QPlainTextEdit()
         self.voice_text.setPlaceholderText("Lời thoại giới thiệu sản phẩm…")
         f.addRow(self.voice_on)
@@ -291,6 +295,7 @@ class MainWindow(QMainWindow):
         f.addRow("File thu âm", voice_file_row)
         f.addRow("Giọng", self.voice_name)
         f.addRow("Tốc độ", self.voice_rate)
+        f.addRow("Cao độ", self.voice_pitch)
         f.addRow("Âm lượng", self.voice_volume)
         f.addRow("Lời thoại", self.voice_text)
         f.addRow(QLabel("Với file thu âm, lời thoại chỉ dùng làm phụ đề (chia đều theo độ dài file)."))
@@ -315,6 +320,8 @@ class MainWindow(QMainWindow):
         f.addRow("Âm lượng gốc", self.orig_volume)
         f.addRow("Nhạc nền", music_row)
         f.addRow("Âm lượng nhạc", self.music_volume)
+        self.duck_music = QCheckBox("Tự hạ nhạc nền khi có lời đọc")
+        f.addRow(self.duck_music)
         tabs.addTab(t, "Âm thanh")
 
         # Hoạt hình theo cảnh
@@ -341,7 +348,10 @@ class MainWindow(QMainWindow):
         self.scene_fade = _spin(0, 2, 0.3, 0.1)
         char_row = QHBoxLayout()
         self.char_dir = QLineEdit()
-        self.char_dir.setPlaceholderText("Thư mục nhân vật: body.png + mouth_X.png, mouth_D.png… (để trống nếu không dùng)")
+        self.char_dir.setPlaceholderText("Một nhân vật (có body.png) hoặc thư mục chứa nhiều nhân vật để hội thoại")
+        self.char_info = QLabel("")
+        self.char_info.setWordWrap(True)
+        self.char_dir.textChanged.connect(self._update_char_info)
         pick_char = QPushButton("…")
         pick_char.setFixedWidth(32)
         pick_char.clicked.connect(self._pick_char_dir)
@@ -371,9 +381,12 @@ class MainWindow(QMainWindow):
         f.addRow("Mức zoom/lia", self.scene_zoom)
         f.addRow("Mờ chuyển cảnh (s)", self.scene_fade)
         f.addRow("Nhân vật nói", char_row)
+        f.addRow(self.char_info)
         f.addRow("Vị trí nhân vật", self.char_side)
         f.addRow("Chiều cao nhân vật", self.char_height)
         f.addRow("Khớp miệng", self.lipsync_mode)
+        self.also_shorts = QCheckBox("Xuất thêm bản Shorts 9:16")
+        f.addRow(self.also_shorts)
         f.addRow(QLabel("Giọng đọc, phụ đề, tiêu đề, nhạc nền và khung hình lấy từ các tab khác.\n"
                         "Chỉ dùng ảnh bạn tự vẽ, tự tạo hoặc có quyền sử dụng."))
         f.addRow(scene_btns)
@@ -424,17 +437,20 @@ class MainWindow(QMainWindow):
         s.subtitle.color = self.sub_color.color
         s.subtitle.margin_v = self.sub_margin.value()
         s.subtitle.max_words = self.sub_words.value()
+        s.subtitle.export_srt = self.export_srt.isChecked()
         s.voice.enabled = self.voice_on.isChecked()
         s.voice.source = self.voice_source.currentData()
         s.voice.file_path = self.voice_file.text().strip()
         s.voice.voice = self.voice_name.currentData()
         s.voice.rate = f"{self.voice_rate.value():+d}%"
+        s.voice.pitch = f"{self.voice_pitch.value():+d}Hz"
         s.voice.volume = self.voice_volume.value()
         s.voice.text = self.voice_text.toPlainText()
         s.audio.keep_original = self.keep_orig.isChecked()
         s.audio.original_volume = self.orig_volume.value()
         s.audio.music_path = self.music_path.text().strip()
         s.audio.music_volume = self.music_volume.value()
+        s.audio.duck_music = self.duck_music.isChecked()
         s.scene.script = self.scene_script.toPlainText()
         s.scene.image_dir = self.scene_dir.text().strip()
         s.scene.seconds_per_scene = self.scene_seconds.value()
@@ -446,6 +462,7 @@ class MainWindow(QMainWindow):
         s.scene.character_side = self.char_side.currentData()
         s.scene.character_height = self.char_height.value()
         s.scene.lipsync = self.lipsync_mode.currentData()
+        s.scene.also_shorts = self.also_shorts.isChecked()
         return s
 
     def apply_settings(self, s: RenderSettings) -> None:
@@ -469,6 +486,7 @@ class MainWindow(QMainWindow):
         self.sub_color.set_color(s.subtitle.color)
         self.sub_margin.setValue(s.subtitle.margin_v)
         self.sub_words.setValue(s.subtitle.max_words)
+        self.export_srt.setChecked(s.subtitle.export_srt)
         self.voice_on.setChecked(s.voice.enabled)
         self.voice_source.setCurrentIndex(max(self.voice_source.findData(s.voice.source), 0))
         self.voice_file.setText(s.voice.file_path)
@@ -479,11 +497,16 @@ class MainWindow(QMainWindow):
         except ValueError:
             self.voice_rate.setValue(0)
         self.voice_volume.setValue(s.voice.volume)
+        try:
+            self.voice_pitch.setValue(int(s.voice.pitch.removesuffix("Hz")))
+        except ValueError:
+            self.voice_pitch.setValue(0)
         self.voice_text.setPlainText(s.voice.text)
         self.keep_orig.setChecked(s.audio.keep_original)
         self.orig_volume.setValue(s.audio.original_volume)
         self.music_path.setText(s.audio.music_path)
         self.music_volume.setValue(s.audio.music_volume)
+        self.duck_music.setChecked(s.audio.duck_music)
         self.scene_script.setPlainText(s.scene.script)
         self.scene_dir.setText(s.scene.image_dir)
         self.scene_seconds.setValue(s.scene.seconds_per_scene)
@@ -495,6 +518,7 @@ class MainWindow(QMainWindow):
         self.char_side.setCurrentIndex(max(self.char_side.findData(s.scene.character_side), 0))
         self.char_height.setValue(s.scene.character_height)
         self.lipsync_mode.setCurrentIndex(max(self.lipsync_mode.findData(s.scene.lipsync), 0))
+        self.also_shorts.setChecked(s.scene.also_shorts)
 
     # ---------- hành động ----------
     def clips(self) -> list[str]:
@@ -525,6 +549,25 @@ class MainWindow(QMainWindow):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn nhạc nền", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
         if f:
             self.music_path.setText(f)
+
+    def _update_char_info(self):
+        from ..lipsync import load_cast
+
+        d = Path(self.char_dir.text().strip())
+        if not self.char_dir.text().strip() or not d.is_dir():
+            self.char_info.setText("")
+        elif (d / "body.png").is_file():
+            self.char_info.setText("Một nhân vật đọc toàn bộ lời.")
+        else:
+            try:
+                names = [m.name for m in load_cast(d).values()]
+            except (OSError, ValueError) as e:
+                names, err = [], str(e)
+            else:
+                err = ""
+            self.char_info.setText(
+                f"Dàn nhân vật: {', '.join(names)}. Viết \"{names[0]}: lời thoại\" trong kịch bản." if names
+                else err or "Không thấy nhân vật nào (mỗi nhân vật là một thư mục con có body.png).")
 
     def _pick_char_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Chọn thư mục nhân vật", self.char_dir.text())
@@ -665,13 +708,24 @@ class MainWindow(QMainWindow):
         out_dir = Path(self.out_dir.text())
         base = self.base_name.text().strip() or "video"
         out, i = out_dir / f"{base}_hoathinh.mp4", 2
-        while out.exists():  # không ghi đè video đã xuất
+        while out.exists() or out.with_name(out.stem + "_shorts.mp4").exists():  # không ghi đè
             out, i = out_dir / f"{base}_hoathinh_{i}.mp4", i + 1
+        jobs = [(s, out)]
+        if s.scene.also_shorts and s.output.width >= s.output.height:
+            shorts = RenderSettings.from_dict(s.to_dict())
+            shorts.output.width, shorts.output.height = 1080, 1920
+            jobs.append((shorts, out.with_name(out.stem + "_shorts.mp4")))
 
         def job(progress, cancel):
-            return [render_scenes(s, out, progress=progress, cancel=cancel)]
+            done = []
+            for k, (settings, path) in enumerate(jobs):
+                def sub(f, m, k=k):
+                    progress((k + f) / len(jobs), f"[{k + 1}/{len(jobs)}] {m}")
+                done.append(render_scenes(settings, path, progress=sub, cancel=cancel))
+            return done
 
-        self._start(job, lambda paths: self.status.setText(f"Đã xuất {paths[0]}"), need_clips=False)
+        self._start(job, lambda paths: self.status.setText("Đã xuất " + ", ".join(str(p) for p in paths)),
+                    need_clips=False)
 
     def closeEvent(self, event):
         self.cancel.set()

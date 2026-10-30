@@ -63,6 +63,8 @@ def test_scene_settings_roundtrip(window):
     s.scene.zoom, s.scene.fade, s.scene.pause = 0.25, 0.5, 0.8
     s.scene.character_dir, s.scene.character_side = "D:/Nhân vật/mèo", "left"
     s.scene.character_height, s.scene.lipsync = 0.4, "loudness"
+    s.scene.also_shorts, s.subtitle.export_srt, s.audio.duck_music = True, False, False
+    s.voice.pitch = "-20Hz"
     window.apply_settings(s)
     assert window.collect_settings() == s
 
@@ -78,3 +80,27 @@ def test_scene_export_does_not_need_clips(window, tmp_path, monkeypatch):
     window.thread.quit()  # thoát vòng sự kiện của luồng ngay khi job xong
     assert window.thread.wait(5000)
     assert calls == [tmp_path / "video_hoathinh_2.mp4"]
+
+
+def test_export_also_shorts(window, tmp_path, monkeypatch):
+    from video_studio.gui import main_window
+
+    calls = []
+    monkeypatch.setattr(main_window, "render_scenes",
+                        lambda s, out, **kw: calls.append((out.name, s.output.width, s.output.height)) or out)
+    window.out_dir.setText(str(tmp_path))
+    window.ratio.setCurrentIndex(window.ratio.findData("1920x1080"))
+    window.also_shorts.setChecked(True)
+    window._export_scenes()
+    window.thread.quit()
+    assert window.thread.wait(5000)
+    assert calls == [("video_hoathinh.mp4", 1920, 1080), ("video_hoathinh_shorts.mp4", 1080, 1920)]
+
+
+def test_char_info_lists_cast(window, tmp_path):
+    for name in ("Mèo", "Chó"):
+        (tmp_path / name).mkdir()
+        for shape in ("body", "mouth_X", "mouth_D"):
+            (tmp_path / name / f"{shape}.png").write_bytes(b"")
+    window.char_dir.setText(str(tmp_path))
+    assert "Chó, Mèo" in window.char_info.text()

@@ -62,7 +62,7 @@ def test_render_scenes_without_voice(image_dir, tmp_path):
 
 def test_render_scenes_with_tts_timing(image_dir, tmp_path, monkeypatch):
     """Giả lập Edge TTS: mỗi cảnh dài theo lời đọc + pause, phụ đề lệch đúng theo cảnh."""
-    def fake_tts(text, _voice, _rate, out_path, retries=2):
+    def fake_tts(text, _voice, _rate, out_path, retries=2, **_kw):
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
                         "-c:a", "libmp3lame", str(out_path)], check=True)
         return [Cue(0.1 * i, 0.1 * i + 0.1, w) for i, w in enumerate(text.split())]

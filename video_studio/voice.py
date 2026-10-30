@@ -19,10 +19,10 @@ class VoiceError(RuntimeError):
     """Lỗi tạo giọng đọc, kèm thông điệp dễ hiểu cho người dùng."""
 
 
-async def _synthesize(text: str, voice: str, rate: str, out_path: Path) -> list[Cue]:
+async def _synthesize(text: str, voice: str, rate: str, out_path: Path, pitch: str = "+0Hz") -> list[Cue]:
     import edge_tts  # import muộn để app vẫn chạy khi chưa cài
 
-    communicate = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary",
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, boundary="WordBoundary",
                                        proxy=os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"))
     words: list[Cue] = []
     with open(out_path, "wb") as f:
@@ -35,7 +35,8 @@ async def _synthesize(text: str, voice: str, rate: str, out_path: Path) -> list[
     return words
 
 
-def synthesize(text: str, voice: str, rate: str, out_path: str | Path, retries: int = 2) -> list[Cue]:
+def synthesize(text: str, voice: str, rate: str, out_path: str | Path, retries: int = 2,
+               pitch: str = "+0Hz") -> list[Cue]:
     """Ghi MP3 ra out_path và trả về mốc thời gian từng từ. Thử lại khi lỗi mạng."""
     if not text.strip():
         raise ValueError("Chưa nhập lời thoại cho voice")
@@ -46,7 +47,7 @@ def synthesize(text: str, voice: str, rate: str, out_path: str | Path, retries: 
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            words = asyncio.run(_synthesize(text, voice, rate, Path(out_path)))
+            words = asyncio.run(_synthesize(text, voice, rate, Path(out_path), pitch))
             if Path(out_path).stat().st_size == 0:
                 raise VoiceError("Edge TTS không trả về âm thanh")
             return words

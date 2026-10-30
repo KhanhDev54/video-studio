@@ -11,6 +11,8 @@ App desktop (Python + PySide6 + FFmpeg) dựng video ngắn giới thiệu sản
 - Hoặc dùng file giọng tự thu (mp3, m4a, wav): độ dài video theo file, phụ đề chia đều lời thoại theo thời gian.
 - Trộn âm thanh gốc, voice và nhạc nền với âm lượng riêng.
 - **Hoạt hình theo cảnh** (tab Hoạt hình): viết kịch bản, mỗi đoạn là một cảnh gắn một ảnh (nhân vật/bối cảnh bạn tự vẽ hoặc có quyền dùng). App đọc lời từng cảnh, cho ảnh chuyển động (zoom, lia), mờ chuyển cảnh, thêm phụ đề, tiêu đề, nhạc nền.
+- **Hội thoại nhiều nhân vật**: kịch bản dạng `Mèo: lời thoại`, mỗi nhân vật có giọng (giọng, tốc độ, cao độ), vị trí và khẩu hình riêng; ai nói thì miệng người đó cử động.
+- Tự hạ nhạc nền khi có lời đọc; xuất kèm file phụ đề `.srt` để tải lên YouTube; xuất thêm bản Shorts 9:16 cùng lúc với bản 16:9.
 - **Nhân vật nói khớp miệng**: chọn thư mục nhân vật (thân + các hình miệng, xem `examples/nhan_vat_mau`), nhân vật đứng trong cảnh, miệng cử động theo giọng đọc và tự chớp mắt.
 - Preset lưu thành JSON trong `~/.video_studio/presets`.
 - Xuất hàng loạt N phiên bản (mỗi bản một cách cắt khác), có nút dừng và preview nhanh độ phân giải thấp.
@@ -38,6 +40,28 @@ Ngày xửa ngày xưa, có một chú mèo lười.
 
 Một hôm, chú quyết định đi câu cá.
 ```
+
+### Hội thoại
+
+Chọn "Nhân vật nói" là một thư mục chứa nhiều thư mục con, mỗi thư mục con là một nhân vật (tên thư mục = tên trong kịch bản, xem `examples/dan_nhan_vat`). Giọng của từng nhân vật đặt trong `nhanvat.json`:
+
+```json
+{ "voice": "vi-VN-NamMinhNeural", "rate": "+5%", "pitch": "-10Hz", "volume": 1.0, "faces": "right" }
+```
+
+`faces` là hướng nhân vật đang nhìn trong hình vẽ; app tự lật hình để nhân vật quay vào giữa khung. Edge TTS chỉ có hai giọng tiếng Việt (Hoài My, Nam Minh), nên dùng `pitch` và `rate` để các nhân vật nghe khác nhau.
+
+```text
+[bo_song.png]
+Ngày xửa ngày xưa, bên bờ sông có hai người bạn.
+Mèo: Hôm nay mình đi câu cá nhé!
+Chó: Được thôi,
+nhưng nhớ mang theo bánh mì.
+
+Kể: Thế là hai bạn lên đường.
+```
+
+Dòng không có tên nối tiếp lời của dòng trước; `Kể:` là lời người dẫn chuyện (giọng ở tab Voice). Trong mỗi cảnh chỉ những nhân vật có lời mới xuất hiện, xếp từ trái sang phải theo thứ tự nói.
 
 Khi bật giọng AI, mỗi cảnh dài bằng lời đọc cộng thời gian nghỉ; khi tắt voice, mỗi cảnh dài theo "Giây/cảnh". Dùng 16:9 cho video YouTube thường, 9:16 cho Shorts.
 
