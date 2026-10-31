@@ -21,7 +21,6 @@ def window(tmp_path, monkeypatch):
 
 def test_settings_roundtrip_through_ui(window):
     from video_studio.settings import RenderSettings
-
     s = RenderSettings()
     s.cut.min_seg, s.cut.max_seg = 2.0, 4.5
     s.output.width, s.output.height, s.output.fit = 1920, 1080, "pad"
@@ -45,7 +44,6 @@ def test_preset_save_and_apply(window):
 
 def test_voice_file_source_roundtrip(window):
     from video_studio.settings import RenderSettings
-
     s = RenderSettings()
     s.voice.enabled, s.voice.source, s.voice.file_path = True, "file", "C:/Thu âm/giới thiệu.m4a"
     s.voice.text = "Sạch bong không cần cúi"
@@ -56,7 +54,6 @@ def test_voice_file_source_roundtrip(window):
 
 def test_scene_settings_roundtrip(window):
     from video_studio.settings import RenderSettings
-
     s = RenderSettings()
     s.scene.script = "[a.png]\nCảnh một.\n\nCảnh hai."
     s.scene.image_dir, s.scene.seconds_per_scene, s.scene.motion = "D:/Ảnh", 2.5, False
@@ -105,3 +102,12 @@ def test_char_info_lists_cast(window, tmp_path):
             (tmp_path / name / f"{shape}.png").write_bytes(b"")
     window.char_dir.setText(str(tmp_path))
     assert "Chó, Mèo" in window.char_info.text()
+
+
+def test_preset_keeps_fields_without_widgets(window):
+    from video_studio.settings import RenderSettings
+    s = RenderSettings()
+    s.output.fps, s.output.crf, s.title.outline = 30, 18, 7
+    window.apply_settings(s)
+    got = window.collect_settings()
+    assert (got.output.fps, got.output.crf, got.title.outline) == (30, 18, 7)

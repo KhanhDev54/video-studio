@@ -47,6 +47,21 @@ def test_character_load_and_fallback(character, tmp_path):
         lipsync.Character.load(tmp_path)
 
 
+def test_two_characters_share_workdir(character, tmp_path):
+    # Hội thoại: nhiều nhân vật dựng chung một thư mục tạm, hình ghép không được lẫn của nhau.
+    ffmpeg, _ = require_ffmpeg()
+    other = tmp_path / "cho"
+    other.mkdir()
+    _png(other / "body.png", "blue", (50, 150, 50, 250))
+    for f in ("mouth_X.png", "mouth_D.png"):
+        (other / f).write_bytes((character / f).read_bytes())
+    work = tmp_path / "work"
+    a = lipsync.build_frames(lipsync.Character.load(character), [], 0.2, 25, ffmpeg, work, seed=0)
+    b = lipsync.build_frames(lipsync.Character.load(other), [], 0.2, 25, ffmpeg, work, seed=1)
+    fa, fb = a.parent / "f_00000.png", b.parent / "f_00000.png"
+    assert fa.read_bytes() != fb.read_bytes()
+
+
 def test_loudness_cues_follow_audio(speechlike):
     ffmpeg, _ = require_ffmpeg()
     cues = lipsync.cues_from_loudness(speechlike, ffmpeg, 25)
@@ -65,10 +80,10 @@ def test_build_frames_sequence(character, tmp_path):
     frames = sorted(pattern.parent.glob("f_*.png"))
     assert len(frames) == 150
     same = lambda a, b: a.read_bytes() == b.read_bytes()  # noqa: E731
-    assert same(frames[37], tmp_path / "char_D.png") and same(frames[5], frames[60])
+    assert same(frames[37], next(tmp_path.glob("char_*_D.png"))) and same(frames[5], frames[60])
     assert not same(frames[5], frames[37])
     blinks = lipsync.blink_times(6.0, 1)
-    assert blinks and same(frames[int(blinks[0][0] * 25) + 1], tmp_path / "char_D_blink.png")  # chớp mắt lúc đang nói (1.2 s)
+    assert blinks and same(frames[int(blinks[0][0] * 25) + 1], next(tmp_path.glob("char_*_D_blink.png")))  # chớp mắt lúc đang nói (1.2 s)
     out = tmp_path / "char.mov"
     subprocess.run([ffmpeg, "-y", "-v", "error", "-framerate", "25", "-start_number", "0", "-i", str(pattern),
                     "-c:v", "png", str(out)], check=True)

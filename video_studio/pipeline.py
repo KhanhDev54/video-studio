@@ -69,7 +69,7 @@ def prepare_voice(settings: RenderSettings, workdir: Path) -> VoiceTrack | None:
             raise ValueError(f"File thu âm {path.name} không có âm thanh")
         return VoiceTrack(path, duration, captions.even_cues(v.text, duration, settings.subtitle.max_words))
     out = Path(workdir) / "voice.mp3"
-    words = voice.synthesize(v.text, v.voice, v.rate, out)
+    words = voice.synthesize(v.text, v.voice, v.rate, out, pitch=v.pitch)
     cues = captions.group_words(words, settings.subtitle.max_words)
     return VoiceTrack(out, probe(out).duration, cues)
 
@@ -213,13 +213,17 @@ def render_batch(clips: list[str | Path], settings: RenderSettings, out_dir: str
     with tempfile.TemporaryDirectory(prefix="vstudio_voice_") as vdir:
         progress(0.0, "Chuẩn bị")
         track = prepare_voice(settings, Path(vdir))
+        number = 0
         for i in range(count):
             _check(cancel)
-            name = out_dir / f"{base_name}_{i + 1:02d}.mp4"
+            number += 1
+            while (out_dir / f"{base_name}_{number:02d}.mp4").exists():  # không ghi đè video đã xuất
+                number += 1
+            name = out_dir / f"{base_name}_{number:02d}.mp4"
 
             def sub(f: float, m: str, i=i) -> None:
                 progress((i + f) / count, f"[{i + 1}/{count}] {m}")
 
-            results.append(render_one(clips, settings, name, seed=i + 1, voice_track=track,
+            results.append(render_one(clips, settings, name, seed=number, voice_track=track,
                                       progress=sub, cancel=cancel))
     return results
