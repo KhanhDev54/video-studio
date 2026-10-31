@@ -12,6 +12,8 @@ App desktop (Python + PySide6 + FFmpeg) dựng video ngắn giới thiệu sản
 - Trộn âm thanh gốc, voice và nhạc nền với âm lượng riêng.
 - **Hoạt hình theo cảnh** (tab Hoạt hình): viết kịch bản, mỗi đoạn là một cảnh gắn một ảnh (nhân vật/bối cảnh bạn tự vẽ hoặc có quyền dùng). App đọc lời từng cảnh, cho ảnh chuyển động (zoom, lia), mờ chuyển cảnh, thêm phụ đề, tiêu đề, nhạc nền.
 - **Hội thoại nhiều nhân vật**: kịch bản dạng `Mèo: lời thoại`, mỗi nhân vật có giọng (giọng, tốc độ, cao độ), vị trí và khẩu hình riêng; ai nói thì miệng người đó cử động.
+- Ảnh bìa YouTube (thumbnail) tự tạo từ cảnh đầu: tiêu đề chữ to + nhân vật.
+- Lưu đệm giọng đọc trong `~/.video_studio/tts_cache`: câu không đổi thì không gọi Edge TTS lại (preview nhanh hơn).
 - Tự hạ nhạc nền khi có lời đọc; xuất kèm file phụ đề `.srt` để tải lên YouTube; xuất thêm bản Shorts 9:16 cùng lúc với bản 16:9.
 - **Nhân vật nói khớp miệng**: chọn thư mục nhân vật (thân + các hình miệng, xem `examples/nhan_vat_mau`), nhân vật đứng trong cảnh, miệng cử động theo giọng đọc và tự chớp mắt.
 - Preset lưu thành JSON trong `~/.video_studio/presets`.
@@ -72,6 +74,12 @@ Khẩu hình miệng lấy theo một trong hai cách:
 - **Theo độ to giọng đọc** (mặc định khi chưa có Rhubarb): không cần cài thêm, miệng đóng/mở theo âm lượng.
 - **[Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync)** (MIT): chính xác hơn, phân biệt được khẩu hình A–H. Tải bản cho hệ điều hành của bạn ở trang Releases, giải nén vào thư mục `rhubarb` cạnh app (hoặc đặt biến `VSTUDIO_RHUBARB`). App dùng bộ nhận dạng `phonetic` (không phụ thuộc ngôn ngữ) cho giọng tiếng Việt.
 
+## Bản .exe cho Windows
+
+Mỗi lần CI chạy, job `windows-exe` đóng gói app bằng PyInstaller, tự kiểm tra bản đóng gói (dựng thử một cảnh có giọng Edge TTS) rồi tải lên mục **Artifacts** của lượt chạy (tab Actions trên GitHub, giữ 30 ngày). Tải `VideoStudio-windows`, giải nén, chạy `VideoStudio.exe`. FFmpeg không đóng gói kèm: cài bằng winget hoặc chép vào `ffmpeg\bin` cạnh file .exe (xem `HUONG_DAN.txt`).
+
+Tự đóng gói trên máy: `py -3 -m pip install -r requirements.txt pyinstaller` rồi `powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1`.
+
 ## Kiểm thử
 
 ```bash
@@ -93,6 +101,8 @@ GitHub Actions (`.github/workflows/tests.yml`) chạy toàn bộ test trên Wind
 | `video_studio/voice.py` | Edge TTS + mốc thời gian từng từ |
 | `video_studio/pipeline.py` | Gọi FFmpeg: cắt, nối, chèn chữ, trộn âm, xuất hàng loạt |
 | `video_studio/scenes.py` | Hoạt hình theo cảnh: đọc kịch bản, ảnh chuyển động, ghép cảnh |
+| `video_studio/thumbnail.py` | Ảnh bìa YouTube |
+| `video_studio/selftest.py` | Tự kiểm tra bản đóng gói (`VideoStudio.exe --selftest kq.json`) |
 | `video_studio/lipsync.py` | Nhân vật nói khớp miệng: khẩu hình từ Rhubarb hoặc độ to, chớp mắt |
 | `video_studio/gui/main_window.py` | Giao diện PySide6 |
 

@@ -23,7 +23,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import captions, lipsync, voice
+from . import captions, lipsync, thumbnail, voice
 from .media import probe, require_ffmpeg
 from .pipeline import Progress, _check, _noop, _run, finish_video, write_srt
 from .settings import RenderSettings
@@ -222,6 +222,23 @@ def _mix_lines(ffmpeg: str, spoken: list[_SpokenLine], volumes: list[float], out
           "-map", "[a]", str(out)], None)
 
 
+def _make_thumbnail(ffmpeg: str, first: Scene, narrator: lipsync.Character | None,
+                    cast: dict[str, lipsync.CastMember], settings: RenderSettings, work: Path,
+                    video: Path) -> Path | None:
+    sc = settings.scene
+    text = sc.thumbnail_text.strip() or settings.title.text.strip() or first.text[:60]
+    if not text:
+        return None
+    char = narrator
+    if char is None and first.speakers:
+        char = cast[first.speakers[0]].character
+    pose = lipsync._compose(char, char.mouth_for("D"), False, ffmpeg, work) if char is not None else None
+    o = settings.output
+    size = thumbnail.YOUTUBE_SIZE if o.width >= o.height else thumbnail.YOUTUBE_SIZE[::-1]
+    return thumbnail.make_thumbnail(first.image, text, video.with_name(video.stem + "_thumbnail.jpg"),
+                                    settings.title, pose, size)
+
+
 def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: Progress = _noop,
                   cancel: threading.Event | None = None) -> Path:
     """Dựng video hoạt hình từ settings.scene. Voice (nếu bật) đọc riêng từng câu với giọng của
@@ -319,6 +336,9 @@ def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: P
                                voice_index=0 if use_tts else None)
         shutil.move(str(tmp_out), out_path)
         write_srt(settings, cues, out_path)
+        if sc.thumbnail:
+            progress(0.98, "Tạo ảnh bìa")
+            _make_thumbnail(ffmpeg, scenes[0], narrator, cast, settings, work, out_path)
         progress(1.0, "Xong")
         return out_path
     finally:

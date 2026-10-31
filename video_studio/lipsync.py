@@ -24,7 +24,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .media import NO_WINDOW
+from .media import NO_WINDOW, app_root
 
 SHAPES = "XABCDEFGH"
 FALLBACK = {
@@ -76,7 +76,7 @@ def find_rhubarb() -> str | None:
     if env:
         p = Path(env)
         candidates += [p] if p.is_file() else [p / exe, *p.glob(f"*/{exe}")]
-    root = Path(__file__).resolve().parent.parent / "rhubarb"
+    root = app_root() / "rhubarb"
     candidates += [root / exe, *root.glob(f"*/{exe}")]
     for c in candidates:
         if c.is_file():
