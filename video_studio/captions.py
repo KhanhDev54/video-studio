@@ -75,7 +75,8 @@ def build_srt(cues: list[Cue]) -> str:
 
 
 def _escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
+    # ASS không có cách thoát dấu "\": chèn ký tự rộng 0 sau nó để "\N", "\h"... không thành lệnh.
+    return text.replace("\\", "\\\u200b").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
 
 
 def build_ass(width: int, height: int, duration: float, title: TitleSettings,

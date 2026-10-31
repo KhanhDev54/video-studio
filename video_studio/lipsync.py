@@ -15,6 +15,7 @@ từ độ to của giọng đọc (không cần cài thêm gì)."""
 from __future__ import annotations
 
 import array
+import hashlib
 import json
 import os
 import random
@@ -198,7 +199,9 @@ def build_frames(char: Character, cues: list[MouthCue], duration: float, fps: in
 
 
 def _compose(char: Character, mouth: str, closed: bool, ffmpeg: str, workdir: Path) -> Path:
-    out = workdir / f"char_{mouth}{'_blink' if closed else ''}.png"
+    # Mỗi nhân vật một tên riêng: trong hội thoại nhiều nhân vật dùng chung workdir.
+    tag = hashlib.sha1(str(char.body.resolve()).encode()).hexdigest()[:10]
+    out = workdir / f"char_{tag}_{mouth}{'_blink' if closed else ''}.png"
     if out.is_file():
         return out
     layers = [char.body, char.mouths[mouth]] + ([char.blink] if closed and char.blink else [])

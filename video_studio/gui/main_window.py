@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import tempfile
 import threading
@@ -96,6 +97,8 @@ def _ispin(lo, hi, value):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Giữ các giá trị preset không có ô chỉnh trên giao diện (fps, crf, viền chữ...).
+        self._base = RenderSettings()
         self.setWindowTitle(f"Video Studio v{__version__}")
         self.resize(1400, 860)
         self.presets = PresetStore(PRESET_DIR)
@@ -423,7 +426,7 @@ class MainWindow(QMainWindow):
 
     # ---------- đồng bộ cài đặt <-> giao diện ----------
     def collect_settings(self) -> RenderSettings:
-        s = RenderSettings()
+        s = copy.deepcopy(self._base)
         s.cut.min_seg, s.cut.max_seg = self.min_seg.value(), self.max_seg.value()
         s.cut.target_duration = self.target.value()
         s.cut.shuffle_clips = self.shuffle_clips.isChecked()
@@ -473,6 +476,7 @@ class MainWindow(QMainWindow):
         return s
 
     def apply_settings(self, s: RenderSettings) -> None:
+        self._base = copy.deepcopy(s)
         self.min_seg.setValue(s.cut.min_seg)
         self.max_seg.setValue(s.cut.max_seg)
         self.target.setValue(s.cut.target_duration)
