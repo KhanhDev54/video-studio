@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from video_studio import media, voice
+from video_studio.captions import Cue
 from video_studio.media import probe, require_ffmpeg
 from video_studio.pipeline import render_one
 from video_studio.settings import PresetStore, RenderSettings
@@ -109,3 +110,20 @@ def test_ffmpeg_dir_override(tmp_path, monkeypatch):
             shutil.copy(exe, target)
     monkeypatch.setenv("VSTUDIO_FFMPEG_DIR", str(d))
     assert Path(media.require_ffmpeg()[0]).parent == d
+
+
+def test_tts_cache_reuses_audio(monkeypatch, tmp_path):
+    calls = []
+
+    async def fake(text, name, rate, out_path, pitch="+0Hz"):
+        calls.append(text)
+        out_path.write_bytes(b"ID3 giong doc")
+        return [Cue(0, 0.5, "xin"), Cue(0.5, 1, "chào")]
+
+    monkeypatch.setattr(voice, "_synthesize", fake)
+    a, b, c = tmp_path / "a.mp3", tmp_path / "b.mp3", tmp_path / "c.mp3"
+    w1 = voice.synthesize("xin chào", "vi-VN-HoaiMyNeural", "+0%", a)
+    w2 = voice.synthesize(" xin chào ", "vi-VN-HoaiMyNeural", "+0%", b)  # khoảng trắng thừa: vẫn trúng
+    voice.synthesize("xin chào", "vi-VN-HoaiMyNeural", "+0%", c, pitch="+10Hz")  # khác cao độ: gọi lại
+    assert calls == ["xin chào", "xin chào"]
+    assert w1 == w2 and b.read_bytes() == a.read_bytes()

@@ -20,13 +20,21 @@ class FFmpegMissing(RuntimeError):
     pass
 
 
+def app_root() -> Path:
+    """Thư mục chứa app: cạnh file .exe khi đóng gói bằng PyInstaller, gốc repo khi chạy mã nguồn.
+    Người dùng đặt thư mục ffmpeg/ và rhubarb/ ở đây."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
 def _candidate_dirs() -> list[Path]:
     """Các thư mục tìm ffmpeg trước khi tra PATH, theo thứ tự ưu tiên."""
     dirs = []
     if os.environ.get("VSTUDIO_FFMPEG_DIR"):
         dirs.append(Path(os.environ["VSTUDIO_FFMPEG_DIR"]))
-    app_root = Path(__file__).resolve().parent.parent
-    dirs += [app_root / "ffmpeg" / "bin", app_root / "ffmpeg"]
+    root = app_root()
+    dirs += [root / "ffmpeg" / "bin", root / "ffmpeg"]
     if sys.platform == "win32" and os.environ.get("LOCALAPPDATA"):
         # winget đặt lối tắt ở đây; PATH chỉ có hiệu lực sau khi mở lại cửa sổ lệnh.
         dirs.append(Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "WinGet" / "Links")

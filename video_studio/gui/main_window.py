@@ -387,6 +387,11 @@ class MainWindow(QMainWindow):
         f.addRow("Khớp miệng", self.lipsync_mode)
         self.also_shorts = QCheckBox("Xuất thêm bản Shorts 9:16")
         f.addRow(self.also_shorts)
+        self.thumb_on = QCheckBox("Tạo ảnh bìa YouTube (thumbnail)")
+        self.thumb_text = QLineEdit()
+        self.thumb_text.setPlaceholderText("Chữ trên ảnh bìa (trống = dùng tiêu đề)")
+        f.addRow(self.thumb_on)
+        f.addRow("Chữ ảnh bìa", self.thumb_text)
         f.addRow(QLabel("Giọng đọc, phụ đề, tiêu đề, nhạc nền và khung hình lấy từ các tab khác.\n"
                         "Chỉ dùng ảnh bạn tự vẽ, tự tạo hoặc có quyền sử dụng."))
         f.addRow(scene_btns)
@@ -463,6 +468,8 @@ class MainWindow(QMainWindow):
         s.scene.character_height = self.char_height.value()
         s.scene.lipsync = self.lipsync_mode.currentData()
         s.scene.also_shorts = self.also_shorts.isChecked()
+        s.scene.thumbnail = self.thumb_on.isChecked()
+        s.scene.thumbnail_text = self.thumb_text.text()
         return s
 
     def apply_settings(self, s: RenderSettings) -> None:
@@ -519,6 +526,8 @@ class MainWindow(QMainWindow):
         self.char_height.setValue(s.scene.character_height)
         self.lipsync_mode.setCurrentIndex(max(self.lipsync_mode.findData(s.scene.lipsync), 0))
         self.also_shorts.setChecked(s.scene.also_shorts)
+        self.thumb_on.setChecked(s.scene.thumbnail)
+        self.thumb_text.setText(s.scene.thumbnail_text)
 
     # ---------- hành động ----------
     def clips(self) -> list[str]:

@@ -65,6 +65,7 @@ def test_scene_settings_roundtrip(window):
     s.scene.character_height, s.scene.lipsync = 0.4, "loudness"
     s.scene.also_shorts, s.subtitle.export_srt, s.audio.duck_music = True, False, False
     s.voice.pitch = "-20Hz"
+    s.scene.thumbnail, s.scene.thumbnail_text = False, "Mèo đi câu"
     window.apply_settings(s)
     assert window.collect_settings() == s
 
