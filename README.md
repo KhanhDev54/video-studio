@@ -12,6 +12,7 @@ App desktop (Python + PySide6 + FFmpeg) dựng video ngắn giới thiệu sản
 - Trộn âm thanh gốc, voice và nhạc nền với âm lượng riêng.
 - **Hoạt hình theo cảnh** (tab Hoạt hình): viết kịch bản, mỗi đoạn là một cảnh gắn một ảnh (nhân vật/bối cảnh bạn tự vẽ hoặc có quyền dùng). App đọc lời từng cảnh, cho ảnh chuyển động (zoom, lia), mờ chuyển cảnh, thêm phụ đề, tiêu đề, nhạc nền.
 - **Hội thoại nhiều nhân vật**: kịch bản dạng `Mèo: lời thoại`, mỗi nhân vật có giọng (giọng, tốc độ, cao độ), vị trí và khẩu hình riêng; ai nói thì miệng người đó cử động.
+- **Tạo nhân vật ngay trong app** (nút "Tạo nhân vật…" ở tab Hoạt hình): chọn loài, màu, mắt, phụ kiện, giọng; app vẽ sẵn thân, đủ 9 khẩu hình và mắt nhắm, không cần tự vẽ.
 - Ảnh bìa YouTube (thumbnail) tự tạo từ cảnh đầu: tiêu đề chữ to + nhân vật.
 - Lưu đệm giọng đọc trong `~/.video_studio/tts_cache`: câu không đổi thì không gọi Edge TTS lại (preview nhanh hơn).
 - Tự hạ nhạc nền khi có lời đọc; xuất kèm file phụ đề `.srt` để tải lên YouTube; xuất thêm bản Shorts 9:16 cùng lúc với bản 16:9.
@@ -67,6 +68,14 @@ Dòng không có tên nối tiếp lời của dòng trước; `Kể:` là lời
 
 Khi bật giọng AI, mỗi cảnh dài bằng lời đọc cộng thời gian nghỉ; khi tắt voice, mỗi cảnh dài theo "Giây/cảnh". Dùng 16:9 cho video YouTube thường, 9:16 cho Shorts.
 
+## Tạo nhân vật
+
+Tab Hoạt hình → "Tạo nhân vật…": chọn tên (tên này dùng trong kịch bản, ví dụ `Mèo: Chào bạn!`), loài (mèo, chó, thỏ, gấu, người, quái vật), màu lông/da, màu bụng/áo, màu tóc, kiểu mắt, phụ kiện (nơ, kính, mũ, khăn), giọng và cao độ. Khung bên phải xem trước nhân vật đang nói và chớp mắt; nút "Ngẫu nhiên" để thử nhanh.
+
+"Lưu nhân vật" ghi vào `<thư mục dàn nhân vật>/<tên>/` đủ `body.png`, `mouth_X..H.png`, `blink.png` và `nhanvat.json`, rồi tự chọn thư mục đó làm "Nhân vật nói". Tạo vài nhân vật vào cùng một thư mục là có ngay dàn nhân vật cho hội thoại. Các file là PNG thường nên bạn có thể mở bằng phần mềm vẽ để chỉnh thêm.
+
+Nhân vật vẽ theo phong cách 2D đơn giản, nhìn thẳng. Muốn nhân vật riêng hơn thì tự vẽ theo hướng dẫn bên dưới.
+
 ## Nhân vật nói khớp miệng
 
 Khẩu hình miệng lấy theo một trong hai cách:
@@ -103,6 +112,8 @@ GitHub Actions (`.github/workflows/tests.yml`) chạy toàn bộ test trên Wind
 | `video_studio/scenes.py` | Hoạt hình theo cảnh: đọc kịch bản, ảnh chuyển động, ghép cảnh |
 | `video_studio/thumbnail.py` | Ảnh bìa YouTube |
 | `video_studio/selftest.py` | Tự kiểm tra bản đóng gói (`VideoStudio.exe --selftest kq.json`) |
+| `video_studio/character_maker.py` | Tạo nhân vật: vẽ thân, 9 khẩu hình, mắt nhắm bằng QPainter |
+| `video_studio/gui/character_dialog.py` | Cửa sổ "Tạo nhân vật" |
 | `video_studio/lipsync.py` | Nhân vật nói khớp miệng: khẩu hình từ Rhubarb hoặc độ to, chớp mắt |
 | `video_studio/gui/main_window.py` | Giao diện PySide6 |
 
