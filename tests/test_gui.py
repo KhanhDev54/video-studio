@@ -111,3 +111,22 @@ def test_preset_keeps_fields_without_widgets(window):
     window.apply_settings(s)
     got = window.collect_settings()
     assert (got.output.fps, got.output.crf, got.title.outline) == (30, 18, 7)
+
+
+def test_character_dialog_creates_cast_member(window, tmp_path):
+    from video_studio.gui.character_dialog import CharacterDialog
+    from video_studio.lipsync import load_cast
+
+    dlg = CharacterDialog(str(tmp_path / "cast"), window)
+    dlg.randomize()
+    dlg.name.setText("Bé Na")
+    dlg.pitch.setValue(15)
+    dlg._tick()
+    assert not dlg.preview.pixmap().isNull()
+    folder = dlg.save(overwrite=False)
+    assert folder == tmp_path / "cast" / "Bé Na"
+    member = load_cast(tmp_path / "cast")["bé na"]
+    assert member.pitch == "+15Hz" and len(member.character.mouths) == 9
+    again = CharacterDialog(str(tmp_path / "cast"), window)
+    again.set_spec(dlg.spec())
+    assert again.save(overwrite=False) is None  # trùng tên, không ghi đè

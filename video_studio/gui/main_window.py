@@ -360,6 +360,9 @@ class MainWindow(QMainWindow):
         pick_char.clicked.connect(self._pick_char_dir)
         char_row.addWidget(self.char_dir)
         char_row.addWidget(pick_char)
+        make_char = QPushButton("Tạo nhân vật…")
+        make_char.clicked.connect(self._make_character)
+        char_row.addWidget(make_char)
         self.char_side = QComboBox()
         for label, key in (("Bên phải", "right"), ("Giữa", "center"), ("Bên trái", "left")):
             self.char_side.addItem(label, key)
@@ -581,6 +584,16 @@ class MainWindow(QMainWindow):
             self.char_info.setText(
                 f"Dàn nhân vật: {', '.join(names)}. Viết \"{names[0]}: lời thoại\" trong kịch bản." if names
                 else err or "Không thấy nhân vật nào (mỗi nhân vật là một thư mục con có body.png).")
+
+    def _make_character(self):
+        from .character_dialog import CharacterDialog
+
+        d = Path(self.char_dir.text().strip())
+        cast = str(d) if self.char_dir.text().strip() and d.is_dir() and not (d / "body.png").is_file() else ""
+        dlg = CharacterDialog(cast, self)
+        if dlg.exec() and dlg.saved is not None:
+            self.char_dir.setText(str(dlg.saved.parent))
+            self._update_char_info()
 
     def _pick_char_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Chọn thư mục nhân vật", self.char_dir.text())

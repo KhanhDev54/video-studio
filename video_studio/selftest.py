@@ -1,4 +1,5 @@
-"""Tự kiểm tra bản đóng gói (.exe): nạp thư viện, tìm FFmpeg, dựng thử một cảnh hoạt hình 1 giây.
+"""Tự kiểm tra bản đóng gói (.exe): nạp thư viện, tìm FFmpeg, tạo một nhân vật rồi dựng thử
+một cảnh hoạt hình 1 giây có nhân vật đó.
 
 Bản .exe dạng cửa sổ không có console nên kết quả ghi ra file JSON."""
 
@@ -18,6 +19,7 @@ def selftest(out: str | Path, tts: bool = False) -> int:
         import PySide6
 
         from . import __version__
+        from .character_maker import CharacterSpec, make_character
         from .media import NO_WINDOW, app_root, probe, require_ffmpeg
         from .scenes import render_scenes
         from .settings import RenderSettings
@@ -32,7 +34,10 @@ def selftest(out: str | Path, tts: bool = False) -> int:
             s = RenderSettings()
             s.output.width, s.output.height, s.output.preset = 320, 180, "ultrafast"
             s.title.text, s.title.font_size = "Tự kiểm tra", 20
-            s.scene.script, s.scene.image_dir, s.scene.seconds_per_scene = "Xin chào.", d, 1.0
+            cast = Path(d) / "dàn nhân vật"
+            make_character(CharacterSpec("Mèo"), cast)
+            s.scene.script, s.scene.image_dir, s.scene.seconds_per_scene = "Mèo: Xin chào.", d, 1.0
+            s.scene.character_dir, s.scene.lipsync = str(cast), "loudness"
             s.scene.thumbnail = False
             if tts:
                 s.voice.enabled = True
