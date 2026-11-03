@@ -86,6 +86,7 @@ class SceneSettings:
     character_dir: str = ""  # thư mục nhân vật nói khớp miệng (xem lipsync.py); trống = không dùng
     character_side: str = "right"  # "left", "center" hoặc "right"
     character_height: float = 0.55  # chiều cao nhân vật so với khung hình
+    character_motion: bool = True  # nhân vật thở nhẹ và nhún khi nói
     lipsync: str = "auto"  # "auto" (Rhubarb nếu có), "rhubarb" hoặc "loudness"
     thumbnail: bool = True  # tạo ảnh bìa YouTube <tên>_thumbnail.jpg từ cảnh đầu
     thumbnail_text: str = ""  # chữ trên ảnh bìa; trống = dùng tiêu đề
