@@ -4,6 +4,7 @@
 $ErrorActionPreference = "Stop"
 python -m PyInstaller --noconfirm --clean --windowed --name VideoStudio `
   --collect-submodules edge_tts --paths . `
+  --add-data "video_studio\assets;video_studio\assets" --hidden-import PySide6.QtSvg `
   --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebEngineWidgets `
   --exclude-module PySide6.QtQuick --exclude-module PySide6.QtQml --exclude-module PySide6.Qt3DCore `
   packaging\launcher.py

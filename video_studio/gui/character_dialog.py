@@ -13,9 +13,11 @@ from PySide6.QtWidgets import (
 )
 
 from .. import character_maker as cm
+from .. import notionists as nt
 from ..voice import VIETNAMESE_VOICES
 
-TALK = "XBCDCBXECBDCX"  # chuỗi khẩu hình để xem trước nhân vật đang nói
+TALK = "XBCDCBXECBDCX"
+HUMAN_NAMES = ["Lan", "Minh", "Hoa", "Nam", "Mai", "Tuấn", "Linh", "Bảo", "An", "Vy"]  # chuỗi khẩu hình để xem trước nhân vật đang nói
 
 
 class CharacterDialog(QDialog):
@@ -54,6 +56,17 @@ class CharacterDialog(QDialog):
         dir_row.addWidget(self.cast_dir)
         dir_row.addWidget(pick)
 
+        # Bộ phận cho kiểu "nét vẽ tay": số thứ tự kiểu, 0 = không có (với bộ phận không bắt buộc)
+        self.parts: dict[str, QSpinBox] = {}
+        for group in nt.PARTS:
+            box = QSpinBox()
+            names = nt.variants(group)
+            optional = names[0] == ""
+            box.setRange(0 if optional else 1, len(names) - (1 if optional else 0))
+            if optional:
+                box.setSpecialValueText("Không")
+            self.parts[group] = box
+
         self.preview = QLabel()
         self.preview.setFixedSize(240, 360)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -66,6 +79,9 @@ class CharacterDialog(QDialog):
         form.addRow("Màu tóc (người)", self.hair)
         form.addRow("Mắt", self.eyes)
         form.addRow("Phụ kiện", self.accessory)
+        for group, label in nt.PARTS.items():
+            form.addRow(label, self.parts[group])
+        self.form = form
         form.addRow("Giọng đọc", self.voice)
         form.addRow("Cao độ giọng", self.pitch)
         form.addRow("Lưu vào thư mục dàn nhân vật", dir_row)
@@ -89,22 +105,46 @@ class CharacterDialog(QDialog):
                               "sửa tiếp bằng phần mềm vẽ bất kỳ."))
         root.addLayout(btns)
 
+        # Vẽ lại sau khi ngừng chỉnh một chút: kiểu nét vẽ tay mất khoảng 1 giây để dựng.
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(250)
+        self._debounce.timeout.connect(self._redraw)
         for combo in (self.kind, self.eyes, self.accessory):
-            combo.currentIndexChanged.connect(self._redraw)
+            combo.currentIndexChanged.connect(self._debounce.start)
         for b in (self.color, self.accent, self.hair):
-            b.clicked.connect(self._redraw)
+            b.clicked.connect(self._debounce.start)
+        for box in self.parts.values():
+            box.valueChanged.connect(self._debounce.start)
+        self.kind.currentIndexChanged.connect(self._update_fields)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(120)
-        self._redraw()
+        self.set_spec(cm.CharacterSpec("Lan", cm.HAND_DRAWN, nt.SKIN[0], "#90CAF9", "#3B2A20",
+                                       parts=nt.default_parts()))
 
     # ----- thông số <-> giao diện -----
+    def _update_fields(self) -> None:
+        hand = self.kind.currentData() == cm.HAND_DRAWN
+        for w in (self.eyes, self.accessory):
+            self.form.setRowVisible(w, not hand)
+        for w in self.parts.values():
+            self.form.setRowVisible(w, hand)
+
+    def _parts(self) -> dict[str, str]:
+        out = {}
+        for group, box in self.parts.items():
+            names = [n for n in nt.variants(group) if n]
+            out[group] = names[box.value() - 1] if box.value() > 0 else ""
+        return out
+
     def spec(self) -> cm.CharacterSpec:
         return cm.CharacterSpec(
             name=self.name.text().strip(), kind=self.kind.currentData(), color=self.color.color,
             accent=self.accent.color, hair=self.hair.color, eyes=self.eyes.currentData(),
             accessory=self.accessory.currentData(), voice=self.voice.currentData(),
-            pitch=f"{self.pitch.value():+d}Hz")
+            pitch=f"{self.pitch.value():+d}Hz",
+            parts=self._parts() if self.kind.currentData() == cm.HAND_DRAWN else {})
 
     def set_spec(self, s: cm.CharacterSpec) -> None:
         self.name.setText(s.name)
@@ -116,6 +156,13 @@ class CharacterDialog(QDialog):
         self.color.set_color(s.color)
         self.accent.set_color(s.accent)
         self.hair.set_color(s.hair)
+        parts = {**nt.default_parts(), **s.parts}
+        for group, box in self.parts.items():
+            box.blockSignals(True)
+            names = [n for n in nt.variants(group) if n]
+            box.setValue(names.index(parts[group]) + 1 if parts.get(group) in names else 0)
+            box.blockSignals(False)
+        self._update_fields()
         try:
             self.pitch.setValue(int(s.pitch.removesuffix("Hz")))
         except ValueError:
@@ -124,27 +171,22 @@ class CharacterDialog(QDialog):
 
     def randomize(self) -> None:
         s = cm.random_spec(random.randrange(1 << 30))
-        s.name = cm.KINDS[s.kind] if self.name.text().strip() in ("", *cm.KINDS.values()) else self.name.text()
+        current = self.name.text().strip()
+        if current in ("", *cm.KINDS.values(), *HUMAN_NAMES):  # tên mặc định: đặt tên mới hợp loài
+            s.name = random.choice(HUMAN_NAMES) if s.kind in (cm.HAND_DRAWN, "nguoi") else cm.KINDS[s.kind]
+        else:
+            s.name = current
         self.set_spec(s)
 
     # ----- xem trước -----
     def _redraw(self) -> None:
-        self._spec = self.spec()
-        self._body = cm.draw_body(self._spec)
-        self._blink = cm.draw_blink(self._spec)
-        self._mouths = {m: cm.draw_mouth(m) for m in set(TALK)}
+        self._debounce.stop()
+        self._layers = cm.layers(self.spec())
         self._tick()
 
     def _tick(self) -> None:
-        from PySide6.QtGui import QPainter
-
         self._frame += 1
-        img = self._body.copy()
-        p = QPainter(img)
-        p.drawImage(0, 0, self._mouths[TALK[self._frame % len(TALK)]])
-        if self._frame % 30 in (0, 1):
-            p.drawImage(0, 0, self._blink)
-        p.end()
+        img = cm.compose(self._layers, TALK[self._frame % len(TALK)], self._frame % 30 in (0, 1))
         self.preview.setPixmap(QPixmap.fromImage(img).scaled(
             self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 

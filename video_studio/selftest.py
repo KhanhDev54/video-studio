@@ -36,7 +36,8 @@ def selftest(out: str | Path, tts: bool = False) -> int:
             s.title.text, s.title.font_size = "Tự kiểm tra", 20
             cast = Path(d) / "dàn nhân vật"
             make_character(CharacterSpec("Mèo"), cast)
-            s.scene.script, s.scene.image_dir, s.scene.seconds_per_scene = "Mèo: Xin chào.", d, 1.0
+            make_character(CharacterSpec("Lan", "nguoi_ve_tay"), cast)  # bộ hình SVG đóng gói kèm app
+            s.scene.script, s.scene.image_dir, s.scene.seconds_per_scene = "Mèo: Xin chào.\nLan: Chào Mèo.", d, 1.0
             s.scene.character_dir, s.scene.lipsync = str(cast), "loudness"
             s.scene.thumbnail = False
             if tts:

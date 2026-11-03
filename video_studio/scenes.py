@@ -140,14 +140,15 @@ class Actor:
 
 
 def _actor_y(actor: Actor, height: int, motion: bool) -> str:
-    """Vị trí dọc theo thời gian: đứng ở đáy khung, thở nhẹ, nhún đầu khi nói."""
+    """Vị trí dọc theo thời gian: đứng ở đáy khung, thở nhẹ, nhún đầu khi nói. Chỉ dịch xuống
+    (phần dưới lấn ra ngoài khung) để nhân vật nửa người không lộ mép cắt ở đáy."""
     if not motion:
         return "H-h"
     breath = max(1.0, height * 0.012)
-    y = f"H-h-{breath:.1f}*(1+sin(2*PI*t/2.6+{actor.phase:.2f}))/2"
+    y = f"H-h+{breath:.1f}*(1+sin(2*PI*t/2.6+{actor.phase:.2f}))/2"
     if actor.talk:
         speaking = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in actor.talk)
-        y += f"-{max(1.0, height * 0.025):.1f}*abs(sin(2*PI*t*2.2))*min(1,{speaking})"
+        y += f"+{max(1.0, height * 0.025):.1f}*abs(sin(2*PI*t*2.2))*min(1,{speaking})"
     return f"'{y}'"
 
 
