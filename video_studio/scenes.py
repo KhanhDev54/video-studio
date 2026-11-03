@@ -135,6 +135,20 @@ class Actor:
     frames: Path
     x: str
     flip: bool = False
+    talk: list[tuple[float, float]] = field(default_factory=list)  # các khoảng nhân vật đang nói
+    phase: float = 0.0  # lệch nhịp thở giữa các nhân vật
+
+
+def _actor_y(actor: Actor, height: int, motion: bool) -> str:
+    """Vị trí dọc theo thời gian: đứng ở đáy khung, thở nhẹ, nhún đầu khi nói."""
+    if not motion:
+        return "H-h"
+    breath = max(1.0, height * 0.012)
+    y = f"H-h-{breath:.1f}*(1+sin(2*PI*t/2.6+{actor.phase:.2f}))/2"
+    if actor.talk:
+        speaking = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in actor.talk)
+        y += f"-{max(1.0, height * 0.025):.1f}*abs(sin(2*PI*t*2.2))*min(1,{speaking})"
+    return f"'{y}'"
 
 
 def _positions(n: int, side: str, width: int) -> list[str]:
@@ -167,7 +181,8 @@ def _render_scene(ffmpeg: str, scene: Scene, motion: str, duration: float, voice
     for i, actor in enumerate(actors):
         flip = ",hflip" if actor.flip else ""
         graph.append(f"[{i + 2}:v]scale=-2:{ch}{flip},format=rgba[c{i}]")
-        graph.append(f"[b{i}][c{i}]overlay=x={actor.x}:y=H-h:format=auto[b{i + 1}]")
+        y = _actor_y(actor, ch, sc.character_motion)
+        graph.append(f"[b{i}][c{i}]overlay=x={actor.x}:y={y}:format=auto[b{i + 1}]")
     tail = f"[b{len(actors)}]"
     fade = min(sc.fade, duration / 3)
     if fade > 0:
@@ -310,11 +325,16 @@ def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: P
                             for c in lipsync.mouth_cues(sp.path, ffmpeg, fps, work, sc.lipsync)]
                 return out
 
+            def talks(owner) -> list[tuple[float, float]]:
+                return [(sp.start, sp.start + sp.duration) for sp in spoken
+                        if sp.path is not None and owner(sp.line)]
+
             actors: list[Actor] = []
             if narrator is not None:
                 frames = lipsync.build_frames(narrator, mouths(lambda _l: True), duration, fps, ffmpeg,
                                               work, seed=n * 10)
-                actors.append(Actor(frames, _positions(1, sc.character_side, settings.output.width)[0]))
+                actors.append(Actor(frames, _positions(1, sc.character_side, settings.output.width)[0],
+                                    talk=talks(lambda _l: True)))
             elif cast:
                 names = scene.speakers
                 xs = _positions(len(names), sc.character_side, settings.output.width)
@@ -322,8 +342,8 @@ def render_scenes(settings: RenderSettings, out_path: str | Path, *, progress: P
                     member = cast[key]
                     frames = lipsync.build_frames(member.character, mouths(lambda l, k=key: l.speaker == k),
                                                   duration, fps, ffmpeg, work, seed=n * 10 + i)
-                    actors.append(Actor(frames, xs[i], _needs_flip(member.faces, i, len(names),
-                                                                    sc.character_side)))
+                    actors.append(Actor(frames, xs[i], _needs_flip(member.faces, i, len(names), sc.character_side),
+                                        talk=talks(lambda l, k=key: l.speaker == k), phase=1.7 * i))
 
             part = work / f"scene_{n:03d}.mp4"
             motion = MOTIONS[n % len(MOTIONS)] if sc.motion else "none"
