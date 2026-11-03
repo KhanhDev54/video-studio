@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import random
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -19,7 +19,9 @@ from .settings import _WINDOWS_RESERVED
 
 W, H = 600, 900  # khung hình nhân vật (dọc), mọi lớp PNG cùng kích thước
 
-KINDS = {"meo": "Mèo", "cho": "Chó", "tho": "Thỏ", "gau": "Gấu", "nguoi": "Người", "quai_vat": "Quái vật"}
+KINDS = {"nguoi_ve_tay": "Người (nét vẽ tay)", "meo": "Mèo", "cho": "Chó", "tho": "Thỏ", "gau": "Gấu",
+         "nguoi": "Người (hoạt hình)", "quai_vat": "Quái vật"}
+HAND_DRAWN = "nguoi_ve_tay"  # bộ Notionists (CC0), xem notionists.py; các loài còn lại app tự vẽ
 EYES = {"tron": "Tròn", "long_lanh": "To long lanh", "cham": "Chấm nhỏ"}
 ACCESSORIES = {"none": "Không", "no": "Nơ", "kinh": "Kính", "mu": "Mũ", "khan": "Khăn quàng"}
 
@@ -46,18 +48,23 @@ class CharacterSpec:
     voice: str = "vi-VN-HoaiMyNeural"
     rate: str = "+0%"
     pitch: str = "+0Hz"
+    parts: dict[str, str] = field(default_factory=dict)  # bộ phận đã chọn cho kiểu "nét vẽ tay"
 
 
 def random_spec(seed: int | None = None, name: str = "Nhân vật") -> CharacterSpec:
     rng = random.Random(seed)
     kind = rng.choice(list(KINDS))
+    voice = dict(voice=rng.choice(["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]),
+                 pitch=f"{rng.choice([-20, -10, 0, 10, 20, 30]):+d}Hz")
+    if kind == HAND_DRAWN:
+        from . import notionists as nt
+        return CharacterSpec(name=name, kind=kind, color=rng.choice(nt.SKIN), accent=rng.choice(nt.SHIRT),
+                             hair=rng.choice(nt.HAIR), parts=nt.random_parts(rng), **voice)
     color = rng.choice(SKIN if kind == "nguoi" else BRIGHT if kind == "quai_vat" else FUR)
     accent = rng.choice(BRIGHT if kind == "nguoi" else ["#FFFFFF", "#FFF3E0", "#FCE4EC", "#F5F5F5"])
     return CharacterSpec(
         name=name, kind=kind, color=color, accent=accent, hair=rng.choice(HAIR),
-        eyes=rng.choice(list(EYES)), accessory=rng.choice(list(ACCESSORIES)),
-        voice=rng.choice(["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]),
-        pitch=f"{rng.choice([-20, -10, 0, 10, 20, 30]):+d}Hz")
+        eyes=rng.choice(list(EYES)), accessory=rng.choice(list(ACCESSORIES)), **voice)
 
 
 # ---------- vẽ ----------
@@ -287,15 +294,27 @@ def draw_mouth(shape: str) -> QImage:
     return img
 
 
-def preview(s: CharacterSpec, mouth: str = "X", blink: bool = False) -> QImage:
-    """Ảnh ghép body + miệng (+ mắt nhắm) để xem trước."""
-    img = draw_body(s)
+def layers(s: CharacterSpec) -> dict[str, QImage]:
+    """Đủ bộ lớp cho lipsync.Character: body, blink, mouth_X..H."""
+    if s.kind == HAND_DRAWN:
+        from . import notionists as nt
+        return nt.layers({**nt.default_parts(), **s.parts}, (s.color, s.hair, s.accent))
+    return {"body": draw_body(s), "blink": draw_blink(s), **{f"mouth_{m}": draw_mouth(m) for m in SHAPES}}
+
+
+def compose(layer_set: dict[str, QImage], mouth: str = "X", blink: bool = False) -> QImage:
+    img = layer_set["body"].copy()
     p = QPainter(img)
-    p.drawImage(0, 0, draw_mouth(mouth))
+    p.drawImage(0, 0, layer_set[f"mouth_{mouth}"])
     if blink:
-        p.drawImage(0, 0, draw_blink(s))
+        p.drawImage(0, 0, layer_set["blink"])
     p.end()
     return img
+
+
+def preview(s: CharacterSpec, mouth: str = "X", blink: bool = False) -> QImage:
+    """Ảnh ghép body + miệng (+ mắt nhắm) để xem trước."""
+    return compose(layers(s), mouth, blink)
 
 
 # ---------- lưu ----------
@@ -317,11 +336,12 @@ def make_character(s: CharacterSpec, cast_dir: str | Path, overwrite: bool = Fal
     if (folder / "body.png").exists() and not overwrite:
         raise FileExistsError(f"Đã có nhân vật {folder.name} trong {cast_dir}")
     folder.mkdir(parents=True, exist_ok=True)
-    layers = {"body": draw_body(s), "blink": draw_blink(s), **{f"mouth_{m}": draw_mouth(m) for m in SHAPES}}
-    for name, img in layers.items():
+    for name, img in layers(s).items():
         if not img.save(str(folder / f"{name}.png")):
             raise OSError(f"Không ghi được {folder / name}.png")
     cfg = {"voice": s.voice, "rate": s.rate, "pitch": s.pitch, "tao_boi_app": asdict(s)}
+    if s.kind == HAND_DRAWN:
+        cfg["faces"] = "right"  # bộ Notionists vẽ nghiêng sang phải; app tự lật để quay vào giữa
     (folder / "nhanvat.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     return folder
 

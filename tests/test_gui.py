@@ -130,3 +130,16 @@ def test_character_dialog_creates_cast_member(window, tmp_path):
     again = CharacterDialog(str(tmp_path / "cast"), window)
     again.set_spec(dlg.spec())
     assert again.save(overwrite=False) is None  # trùng tên, không ghi đè
+
+
+def test_character_dialog_hand_drawn_parts(window):
+    from video_studio import character_maker as cm
+    from video_studio.gui.character_dialog import CharacterDialog
+
+    dlg = CharacterDialog("", window)
+    assert dlg.kind.currentData() == cm.HAND_DRAWN
+    assert dlg.parts["eyes"].text() == "1" and dlg.parts["glasses"].text() == "Không"
+    dlg.parts["glasses"].setValue(2)
+    assert dlg.spec().parts["glasses"] == "variant02"
+    dlg.set_spec(cm.CharacterSpec("Mèo", "meo"))
+    assert dlg.spec().parts == {}

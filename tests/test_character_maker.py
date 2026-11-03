@@ -28,7 +28,7 @@ def test_make_character_writes_full_set(tmp_path):
     cm.make_character(s, tmp_path, overwrite=True)
 
 
-@pytest.mark.parametrize("kind", list(cm.KINDS))
+@pytest.mark.parametrize("kind", [k for k in cm.KINDS if k != cm.HAND_DRAWN])
 @pytest.mark.parametrize("eyes", list(cm.EYES))
 def test_blink_closes_eyes(kind, eyes):
     s = cm.CharacterSpec(kind=kind, eyes=eyes, color="#3366CC")
@@ -37,6 +37,38 @@ def test_blink_closes_eyes(kind, eyes):
     # Tâm đồng tử: mắt mở màu tối, mắt nhắm là màu mặt.
     assert open_.pixelColor(cm.EYE_L, cm.EYE_Y + 4).lightness() < 80
     assert closed.pixelColor(cm.EYE_L, cm.EYE_Y + 4).name() == "#3366cc"
+
+
+def _alpha(img, x, y):
+    return img.pixelColor(x, y).alpha()
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_hand_drawn_character(seed, tmp_path):
+    from video_studio import notionists as nt
+
+    s = cm.random_spec(None)
+    s.kind, s.parts = cm.HAND_DRAWN, nt.random_parts(__import__("random").Random(seed))
+    s.color, s.name = "#C68642", f"Người {seed}"
+    imgs = cm.layers(s)
+    assert set(imgs) == {"body", "blink", *(f"mouth_{m}" for m in SHAPES)}
+    body = imgs["body"]
+    # Mặt được tô màu da (bộ gốc để trong suốt): ngay dưới hai mắt phải là màu da.
+    boxes = nt._eye_boxes({**nt.default_parts(), **s.parts}, (s.color, s.hair, s.accent))
+    assert len(boxes) == 2
+    k = nt.SIZE / 1744
+    x0, y1 = boxes[0][0], boxes[0][3]
+    assert body.pixelColor(int(boxes[0][2] * k) + 15, int(y1 * k) + 12).name() == "#c68642"
+    # Chớp mắt: lớp blink chỉ phủ vùng mắt, và khác ảnh lúc mở mắt ở đó.
+    eye_x, eye_y = int((boxes[0][0] + boxes[0][2]) / 2 * k), int((boxes[0][1] + boxes[0][3]) / 2 * k)
+    assert _alpha(imgs["blink"], eye_x, eye_y) == 255
+    assert _alpha(imgs["blink"], 10, 890) == 0
+    assert cm.compose(imgs, blink=True) != cm.compose(imgs)
+    assert all(imgs[f"mouth_{a}"] != imgs[f"mouth_{b}"] for a in SHAPES for b in SHAPES if a < b)
+    if seed == 0:
+        folder = cm.make_character(s, tmp_path)
+        assert len(Character.load(folder).mouths) == 9
+        assert cm.load_spec(folder) == s
 
 
 def test_mouth_shapes_are_distinct():

@@ -12,7 +12,8 @@ App desktop (Python + PySide6 + FFmpeg) dựng video ngắn giới thiệu sản
 - Trộn âm thanh gốc, voice và nhạc nền với âm lượng riêng.
 - **Hoạt hình theo cảnh** (tab Hoạt hình): viết kịch bản, mỗi đoạn là một cảnh gắn một ảnh (nhân vật/bối cảnh bạn tự vẽ hoặc có quyền dùng). App đọc lời từng cảnh, cho ảnh chuyển động (zoom, lia), mờ chuyển cảnh, thêm phụ đề, tiêu đề, nhạc nền.
 - **Hội thoại nhiều nhân vật**: kịch bản dạng `Mèo: lời thoại`, mỗi nhân vật có giọng (giọng, tốc độ, cao độ), vị trí và khẩu hình riêng; ai nói thì miệng người đó cử động.
-- **Tạo nhân vật ngay trong app** (nút "Tạo nhân vật…" ở tab Hoạt hình): chọn loài, màu, mắt, phụ kiện, giọng; app vẽ sẵn thân, đủ 9 khẩu hình và mắt nhắm, không cần tự vẽ.
+- **Tạo nhân vật ngay trong app** (nút "Tạo nhân vật…" ở tab Hoạt hình): người nét vẽ tay (bộ Notionists, CC0: 64 kiểu tóc, 25 kiểu áo, tay, kính, râu) hoặc con vật hoạt hình; tự tô màu, vẽ đủ 9 khẩu hình và mắt nhắm.
+- Nhân vật thở nhẹ và nhún đầu khi nói (tắt được).
 - Ảnh bìa YouTube (thumbnail) tự tạo từ cảnh đầu: tiêu đề chữ to + nhân vật.
 - Lưu đệm giọng đọc trong `~/.video_studio/tts_cache`: câu không đổi thì không gọi Edge TTS lại (preview nhanh hơn).
 - Tự hạ nhạc nền khi có lời đọc; xuất kèm file phụ đề `.srt` để tải lên YouTube; xuất thêm bản Shorts 9:16 cùng lúc với bản 16:9.
@@ -70,11 +71,14 @@ Khi bật giọng AI, mỗi cảnh dài bằng lời đọc cộng thời gian n
 
 ## Tạo nhân vật
 
-Tab Hoạt hình → "Tạo nhân vật…": chọn tên (tên này dùng trong kịch bản, ví dụ `Mèo: Chào bạn!`), loài (mèo, chó, thỏ, gấu, người, quái vật), màu lông/da, màu bụng/áo, màu tóc, kiểu mắt, phụ kiện (nơ, kính, mũ, khăn), giọng và cao độ. Khung bên phải xem trước nhân vật đang nói và chớp mắt; nút "Ngẫu nhiên" để thử nhanh.
+Tab Hoạt hình → "Tạo nhân vật…": chọn tên (tên này dùng trong kịch bản, ví dụ `Lan: Chào bạn!`), loài, màu da/lông, màu áo/bụng, màu tóc, giọng và cao độ.
+
+- **Người (nét vẽ tay)**: nửa người, phong cách minh hoạ, ráp từ bộ [Notionists](https://heyzoish.gumroad.com/l/notionists) của Zoish (giấy phép CC0, dùng thương mại không cần ghi nguồn; lấy qua [DiceBear](https://www.dicebear.com)). Chọn kiểu tóc, áo, tay (cầm điện thoại, chỉ tay...), mắt, lông mày, mũi, kính, râu. Nhân vật nhìn nghiêng nên app tự lật để hai người quay vào nhau.
+- **Mèo, chó, thỏ, gấu, người hoạt hình, quái vật**: app tự vẽ, toàn thân, chọn kiểu mắt và phụ kiện (nơ, kính, mũ, khăn). Khung bên phải xem trước nhân vật đang nói và chớp mắt; nút "Ngẫu nhiên" để thử nhanh.
 
 "Lưu nhân vật" ghi vào `<thư mục dàn nhân vật>/<tên>/` đủ `body.png`, `mouth_X..H.png`, `blink.png` và `nhanvat.json`, rồi tự chọn thư mục đó làm "Nhân vật nói". Tạo vài nhân vật vào cùng một thư mục là có ngay dàn nhân vật cho hội thoại. Các file là PNG thường nên bạn có thể mở bằng phần mềm vẽ để chỉnh thêm.
 
-Nhân vật vẽ theo phong cách 2D đơn giản, nhìn thẳng. Muốn nhân vật riêng hơn thì tự vẽ theo hướng dẫn bên dưới.
+Muốn nhân vật riêng hơn thì tự vẽ theo hướng dẫn bên dưới. Bộ Notionists vẽ miệng theo biểu cảm nên app chọn 9 kiểu môi gần nhất với 9 khẩu hình; khớp miệng không chính xác bằng hình tự vẽ riêng cho từng khẩu hình.
 
 ## Nhân vật nói khớp miệng
 
@@ -113,6 +117,7 @@ GitHub Actions (`.github/workflows/tests.yml`) chạy toàn bộ test trên Wind
 | `video_studio/thumbnail.py` | Ảnh bìa YouTube |
 | `video_studio/selftest.py` | Tự kiểm tra bản đóng gói (`VideoStudio.exe --selftest kq.json`) |
 | `video_studio/character_maker.py` | Tạo nhân vật: vẽ thân, 9 khẩu hình, mắt nhắm bằng QPainter |
+| `video_studio/notionists.py` | Ráp nhân vật nét vẽ tay từ `assets/notionists.json` (CC0, xuất bằng `tools/export_notionists.mjs`) |
 | `video_studio/gui/character_dialog.py` | Cửa sổ "Tạo nhân vật" |
 | `video_studio/lipsync.py` | Nhân vật nói khớp miệng: khẩu hình từ Rhubarb hoặc độ to, chớp mắt |
 | `video_studio/gui/main_window.py` | Giao diện PySide6 |
