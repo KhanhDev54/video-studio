@@ -82,4 +82,4 @@ jobs:
         with:
           name: VideoStudio-windows
           path: dist/VideoStudio
-          retention-days: 30
+          retention-days: 3
