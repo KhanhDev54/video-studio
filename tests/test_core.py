@@ -77,6 +77,11 @@ def test_ass_contains_title_and_escapes_braces():
     assert "Sub,,0,0,0,,xin chào" in ass
 
 
+def test_escape_backslash_does_not_become_ass_command():
+    # "\\N" gõ trong chữ phải hiện nguyên văn, không thành xuống dòng.
+    assert captions._escape("C:\\New") == "C:\\\u200bNew"
+
+
 def test_preset_roundtrip(tmp_path):
     store = PresetStore(tmp_path)
     s = RenderSettings()
@@ -109,9 +114,41 @@ def test_render_batch_makes_n_files(clips, tmp_path):
     outs = render_batch(clips, s, tmp_path / "batch", 2, base_name="sp")
     assert [p.name for p in outs] == ["sp_01.mp4", "sp_02.mp4"]
     assert all(p.exists() for p in outs)
+    again = render_batch(clips, s, tmp_path / "batch", 1, base_name="sp")  # xuất lại không ghi đè
+    assert [p.name for p in again] == ["sp_03.mp4"]
 
 
-@pytest.mark.skipif(not os.environ.get("VSTUDIO_TEST_TTS"), reason="cần mạng; đặt VSTUDIO_TEST_TTS=1 để chạy")
+def test_prepare_voice_passes_pitch(monkeypatch, tmp_path):
+    from video_studio import pipeline, voice
+    seen = {}
+
+    def fake(text, name, rate, out, pitch="+0Hz", **_):
+        seen["pitch"] = pitch
+        _make_clip(Path(out).with_suffix(".tmp.mp4"), 1, "16x16", True).rename(out)
+        return [captions.Cue(0, 0.5, "xin")]
+
+    monkeypatch.setattr(voice, "synthesize", fake)
+    s = RenderSettings()
+    s.voice.enabled, s.voice.text, s.voice.pitch = True, "xin", "+20Hz"
+    pipeline.prepare_voice(s, tmp_path)
+    assert seen["pitch"] == "+20Hz"
+
+
+needs_tts = pytest.mark.skipif(not os.environ.get("VSTUDIO_TEST_TTS"), reason="cần mạng; đặt VSTUDIO_TEST_TTS=1 để chạy")
+
+
+@needs_tts
+def test_edge_tts_returns_word_timings(tmp_path):
+    from video_studio import voice
+
+    out = tmp_path / "v.mp3"
+    words = voice.synthesize("Cây chà sàn ba trong một.", "vi-VN-HoaiMyNeural", "+0%", out)
+    assert out.stat().st_size > 1000 and probe(out).duration > 0.5
+    assert len(words) >= 4 and all(w.end > w.start >= 0 for w in words)
+    assert "chà" in " ".join(w.text for w in words)
+
+
+@needs_tts
 def test_render_with_voice(clips, tmp_path):
     s = small_settings()
     s.voice.enabled = True

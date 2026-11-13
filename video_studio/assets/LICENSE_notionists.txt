@@ -1,0 +1,7 @@
+notionists.json: các mảnh hình nhân vật Notionists.
+
+Thiết kế: Notionists, tác giả Zoish (https://heyzoish.gumroad.com/l/notionists)
+Giấy phép thiết kế: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+
+Xuất từ gói npm @dicebear/notionists 9.4.2 (https://www.dicebear.com), mã nguồn giấy phép MIT,
+Copyright (c) 2024 Florian Körner, bằng tools/export_notionists.mjs.

@@ -1,0 +1,11 @@
+VIDEO STUDIO - HUONG DAN NHANH
+
+1. Chay VideoStudio.exe.
+2. Can FFmpeg: cai bang lenh "winget install Gyan.FFmpeg" (mo lai may hoac cua so lenh sau khi cai),
+   hoac giai nen ffmpeg.exe + ffprobe.exe vao thu muc "ffmpeg\bin" canh VideoStudio.exe.
+3. (Khong bat buoc) Khop mieng chinh xac hon: tai Rhubarb Lip Sync ban Windows tai
+   https://github.com/DanielSWolf/rhubarb-lip-sync/releases va giai nen vao thu muc "rhubarb"
+   canh VideoStudio.exe.
+4. Thu muc "examples" co nhan vat mau va dan nhan vat de thu che do Hoat hinh.
+
+Giong doc Edge TTS can mang Internet. Chi dung video, nhac, hinh anh ban so huu hoac co quyen su dung.

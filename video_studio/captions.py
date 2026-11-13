@@ -59,8 +59,24 @@ def _ts(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
+def _srt_ts(seconds: float) -> str:
+    ms = int(round(max(0.0, seconds) * 1000))
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def build_srt(cues: list[Cue]) -> str:
+    """Phụ đề dạng SRT (YouTube nhận trực tiếp)."""
+    blocks = [f"{i}\n{_srt_ts(c.start)} --> {_srt_ts(c.end)}\n{c.text}\n"
+              for i, c in enumerate((c for c in cues if c.text.strip()), 1)]
+    return "\n".join(blocks)
+
+
 def _escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
+    # ASS không có cách thoát dấu "\": chèn ký tự rộng 0 sau nó để "\N", "\h"... không thành lệnh.
+    return text.replace("\\", "\\\u200b").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
 
 
 def build_ass(width: int, height: int, duration: float, title: TitleSettings,

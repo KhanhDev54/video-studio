@@ -3,3 +3,8 @@ __pycache__/
 .venv/
 .pytest_cache/
 *.mp4
+rhubarb/
+ffmpeg/
+build/
+dist/
+*.spec
