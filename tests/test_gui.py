@@ -1,0 +1,43 @@
+import os
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+
+
+@pytest.fixture
+def window(tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    from video_studio.gui import main_window
+
+    monkeypatch.setattr(main_window, "PRESET_DIR", tmp_path / "presets")
+    app = QApplication.instance() or QApplication([])
+    w = main_window.MainWindow()
+    yield w
+    w.close()
+
+
+def test_settings_roundtrip_through_ui(window):
+    from video_studio.settings import RenderSettings
+
+    s = RenderSettings()
+    s.cut.min_seg, s.cut.max_seg = 2.0, 4.5
+    s.output.width, s.output.height, s.output.fit = 1920, 1080, "pad"
+    s.title.text, s.title.color = "Cây chà sàn", "#FF0000"
+    s.voice.enabled, s.voice.voice, s.voice.rate = True, "vi-VN-NamMinhNeural", "+10%"
+    s.voice.text = "Xin chào"
+    s.audio.keep_original, s.audio.music_volume = False, 0.25
+    window.apply_settings(s)
+    assert window.collect_settings() == s
+
+
+def test_preset_save_and_apply(window):
+    window.title_text.setText("Gia dụng")
+    window.preset_name.setText("gia dụng")
+    window._save_preset()
+    window.title_text.setText("")
+    window.preset_combo.setCurrentText("gia dụng")
+    window._load_preset()
+    assert window.title_text.text() == "Gia dụng"
