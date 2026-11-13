@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import os
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -59,6 +60,17 @@ class Worker(QObject):
             self.failed.emit("Đã dừng.")
         except Exception as e:  # hiện mọi lỗi ra giao diện thay vì làm sập app
             self.failed.emit(str(e))
+
+
+def _avoid_dead_pipewire() -> None:
+    """Qt 6.10+ trên Linux chọn PipeWire khi có thư viện, và QAudioOutput bị sập (segfault) nếu
+    không có dịch vụ PipeWire đang chạy (máy không có phiên âm thanh, CI). Khi đó dùng PulseAudio."""
+    if not sys.platform.startswith("linux") or os.environ.get("QT_AUDIO_BACKEND"):
+        return
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    sock = os.environ.get("PIPEWIRE_REMOTE") or "pipewire-0"
+    if not (runtime and (Path(runtime) / sock).exists()):
+        os.environ["QT_AUDIO_BACKEND"] = "pulseaudio"
 
 
 class ColorButton(QPushButton):
@@ -178,6 +190,7 @@ class MainWindow(QMainWindow):
         title = QLabel("XEM TRƯỚC")
         title.setAlignment(Qt.AlignCenter)
         lay.addWidget(title)
+        _avoid_dead_pipewire()
         try:
             from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
             from PySide6.QtMultimediaWidgets import QVideoWidget

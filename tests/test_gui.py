@@ -162,3 +162,20 @@ def test_character_dialog_save_button_and_debounce(window, tmp_path, monkeypatch
     again = CharacterDialog(str(tmp_path / "cast"), window)
     next(b for b in again.findChildren(QPushButton) if b.text() == "Lưu nhân vật").click()
     assert asked and again.saved == dlg.saved
+
+
+def test_audio_backend_without_pipewire_daemon(monkeypatch, tmp_path):
+    import sys
+
+    from video_studio.gui import main_window
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("QT_AUDIO_BACKEND", raising=False)
+    monkeypatch.delenv("PIPEWIRE_REMOTE", raising=False)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    main_window._avoid_dead_pipewire()  # không có socket pipewire-0: dùng PulseAudio
+    assert main_window.os.environ["QT_AUDIO_BACKEND"] == "pulseaudio"
+    monkeypatch.delenv("QT_AUDIO_BACKEND")
+    (tmp_path / "pipewire-0").touch()
+    main_window._avoid_dead_pipewire()  # có PipeWire đang chạy: để Qt tự chọn
+    assert "QT_AUDIO_BACKEND" not in main_window.os.environ
