@@ -164,3 +164,17 @@ def test_character_moves_while_talking(tmp_path, monkeypatch, motion):
     out = scenes.render_scenes(s, tmp_path / "nhun.mp4")
     tops = {_top_row(out, t, 320, 640, 360) for t in (0.1, 0.3, 0.55, 0.8, 1.05, 1.3)}
     assert (len(tops) > 1) == motion, tops
+
+
+def test_hand_drawn_face_is_skin_for_every_hair():
+    # Mặt phải có màu da với mọi kiểu tóc (tóc mái không được che chỗ bên dưới mắt).
+    from video_studio import notionists as nt
+
+    colors = ("#C68642", "#3B2A20", "#90CAF9")
+    k = nt.SIZE / 1744
+    eye = nt._eye_boxes(nt.default_parts(), colors)[0]
+    x, y = int((eye[0] + eye[2]) / 2 * k), int((eye[3] + 40) * k)
+    bad = [h for h in nt.variants("hair")
+           if nt.render(nt.svg({**nt.default_parts(), "hair": h}, colors, skip={"lips"}), nt.SIZE)
+           .pixelColor(x, y).name() != "#c68642"]
+    assert not bad
