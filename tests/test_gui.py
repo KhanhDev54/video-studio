@@ -143,3 +143,22 @@ def test_character_dialog_hand_drawn_parts(window):
     assert dlg.spec().parts["glasses"] == "variant02"
     dlg.set_spec(cm.CharacterSpec("Mèo", "meo"))
     assert dlg.spec().parts == {}
+
+
+def test_character_dialog_save_button_and_debounce(window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox, QPushButton
+
+    from video_studio.gui.character_dialog import CharacterDialog
+
+    dlg = CharacterDialog(str(tmp_path / "cast"), window)
+    dlg.parts["hair"].setValue(40)  # giá trị không được thành thời gian chờ vẽ lại
+    assert dlg._debounce.interval() == 250
+    save = next(b for b in dlg.findChildren(QPushButton) if b.text() == "Lưu nhân vật")
+    save.click()
+    assert dlg.saved is not None and (dlg.saved / "body.png").is_file()
+    # Trùng tên: nút Lưu phải hỏi ghi đè (trước đây clicked gửi False nên lặng lẽ không lưu).
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: asked.append(a) or QMessageBox.StandardButton.Yes)
+    again = CharacterDialog(str(tmp_path / "cast"), window)
+    next(b for b in again.findChildren(QPushButton) if b.text() == "Lưu nhân vật").click()
+    assert asked and again.saved == dlg.saved

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -81,8 +80,8 @@ def _fragment(group: str, variant: str, parts: dict[str, str], colors: tuple[str
 
 
 def svg(parts: dict[str, str], colors: tuple[str, str, str], only: set[str] | None = None,
-        skip: set[str] = frozenset(), extra: str = "") -> str:
-    """Ráp SVG. `only`/`skip`: chọn lớp; `extra`: SVG thêm vào cuối (vd. mắt nhắm)."""
+        skip: set[str] = frozenset()) -> str:
+    """Ráp SVG. `only`/`skip`: chọn lớp."""
     d = data()
     body = []
     for layer in d["layers"]:
@@ -94,7 +93,7 @@ def svg(parts: dict[str, str], colors: tuple[str, str, str], only: set[str] | No
         if frag:
             body.append(f'<g transform="{layer["transform"]}">{frag}</g>')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{d["viewBox"]}" fill="none">'
-            + "".join(body) + extra + "</svg>")
+            + "".join(body) + "</svg>")
 
 
 def render(svg_text: str, size: int = SIZE) -> QImage:
@@ -128,7 +127,7 @@ def _eye_boxes(parts: dict[str, str], colors) -> list[tuple[float, float, float,
 
 
 def _closed_eyes_svg(boxes) -> str:
-    """Nét mi cong thay cho mắt mở, kèm kính vẽ lại phía trên."""
+    """Nét mi cong thay cho mắt mở."""
     lines = []
     for x0, y0, x1, y1 in boxes:
         cy, w = (y0 + y1) / 2, x1 - x0
@@ -136,44 +135,6 @@ def _closed_eyes_svg(boxes) -> str:
                      f'stroke="#000" stroke-width="14" stroke-linecap="round" fill="none"/>')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{data()["viewBox"]}" fill="none">'
             + "".join(lines) + "</svg>")
-
-
-def _skin_fill(parts: dict[str, str], colors, boxes) -> QImage:
-    """Mặt trong bộ gốc chỉ có nét viền (trong suốt bên trong): loang màu da từ giữa hai mắt
-    ra tới nét viền của đầu, tóc và áo (tóc khép kín phía trên đầu)."""
-    n = SIZE
-    head = render(svg(parts, colors, only={"base", "hair", "body", "beard"}), n).convertToFormat(QImage.Format.Format_ARGB32)
-    alpha = bytes(head.constBits())[3::4] if sys.byteorder == "little" else bytes(head.constBits())[0::4]
-    scale = n / float(data()["viewBox"].split()[2])
-    sx = int(sum((b[0] + b[2]) / 2 for b in boxes) / len(boxes) * scale) if boxes else n // 2
-    sy = int(max(b[3] for b in boxes) * scale) if boxes else n // 2
-    filled = bytearray(n * n)
-    stack = [sy * n + sx]
-    while stack:
-        i = stack.pop()
-        if filled[i] or alpha[i] > 100:
-            continue
-        filled[i] = 1
-        x, y = i % n, i // n
-        if x == 0 or y == 0 or x == n - 1 or y == n - 1:
-            return QImage()  # tràn ra ngoài: hình đầu không kín, bỏ qua
-        stack += (i - 1, i + 1, i - n, i + n)
-    out = QImage(n, n, QImage.Format.Format_ARGB32)
-    out.fill(Qt.GlobalColor.transparent)
-    c = QColor(colors[0])
-    p = QPainter(out)
-    p.setPen(c)
-    for y in range(n):
-        row, x = y * n, 0
-        while x < n:
-            if filled[row + x]:
-                x0 = x
-                while x < n and filled[row + x]:
-                    x += 1
-                p.drawLine(x0 - 1, y, x, y)  # lấn 1 px vào nét viền cho kín mép
-            x += 1
-    p.end()
-    return out
 
 
 def _stack(*images: QImage, clip: list[tuple[float, float, float, float]] | None = None,
@@ -201,12 +162,11 @@ def _stack(*images: QImage, clip: list[tuple[float, float, float, float]] | None
 def layers(parts: dict[str, str], colors: tuple[str, str, str]) -> dict[str, QImage]:
     """Đủ bộ PNG cho lipsync.Character: body, blink, mouth_X..H."""
     boxes = _eye_boxes(parts, colors)
-    skin = _skin_fill(parts, colors, boxes)
-    out = {"body": _stack(skin, render(svg(parts, colors, skip={"lips"}))),
-           # mắt nhắm: trong khung mắt vẽ lại da + mọi thứ trừ mắt, rồi nét mi và kính
-           "blink": _stack(skin, render(svg(parts, colors, skip={"eyes", "lips", "glasses"})),
+    out = {"body": render(svg(parts, colors, skip={"lips"})),
+           # mắt nhắm: trong khung mắt vẽ lại mặt (da) và mọi thứ trừ mắt, rồi nét mi và kính
+           "blink": _stack(render(svg(parts, colors, skip={"eyes", "lips", "glasses"})),
                            render(_closed_eyes_svg(boxes)), render(svg(parts, colors, only={"glasses"})),
-                           clip=boxes, clipped=2)}
+                           clip=boxes, clipped=1)}
     for shape, lips in LIPS.items():
         out[f"mouth_{shape}"] = render(svg({**parts, "lips": lips}, colors, only={"lips"}))
     return out
