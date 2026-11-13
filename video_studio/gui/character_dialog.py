@@ -16,8 +16,8 @@ from .. import character_maker as cm
 from .. import notionists as nt
 from ..voice import VIETNAMESE_VOICES
 
-TALK = "XBCDCBXECBDCX"
-HUMAN_NAMES = ["Lan", "Minh", "Hoa", "Nam", "Mai", "Tuấn", "Linh", "Bảo", "An", "Vy"]  # chuỗi khẩu hình để xem trước nhân vật đang nói
+TALK = "XBCDCBXECBDCX"  # chuỗi khẩu hình để xem trước nhân vật đang nói
+HUMAN_NAMES = ["Lan", "Minh", "Hoa", "Nam", "Mai", "Tuấn", "Linh", "Bảo", "An", "Vy"]
 
 
 class CharacterDialog(QDialog):
@@ -90,7 +90,7 @@ class CharacterDialog(QDialog):
         rand.clicked.connect(self.randomize)
         save = QPushButton("Lưu nhân vật")
         save.setObjectName("export")
-        save.clicked.connect(self.save)
+        save.clicked.connect(lambda: self.save())  # clicked gửi kèm checked=False, không để rơi vào overwrite
         btns = QHBoxLayout()
         btns.addWidget(rand)
         btns.addStretch()
@@ -110,12 +110,14 @@ class CharacterDialog(QDialog):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(250)
         self._debounce.timeout.connect(self._redraw)
+        # lambda: nếu nối thẳng, giá trị của tín hiệu bị hiểu là số mili giây của start(msec)
+        restart = lambda *_: self._debounce.start()  # noqa: E731
         for combo in (self.kind, self.eyes, self.accessory):
-            combo.currentIndexChanged.connect(self._debounce.start)
+            combo.currentIndexChanged.connect(restart)
         for b in (self.color, self.accent, self.hair):
-            b.clicked.connect(self._debounce.start)
+            b.clicked.connect(restart)
         for box in self.parts.values():
-            box.valueChanged.connect(self._debounce.start)
+            box.valueChanged.connect(restart)
         self.kind.currentIndexChanged.connect(self._update_fields)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)

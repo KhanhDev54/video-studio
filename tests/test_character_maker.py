@@ -57,7 +57,7 @@ def test_hand_drawn_character(seed, tmp_path):
     boxes = nt._eye_boxes({**nt.default_parts(), **s.parts}, (s.color, s.hair, s.accent))
     assert len(boxes) == 2
     k = nt.SIZE / 1744
-    x0, y1 = boxes[0][0], boxes[0][3]
+    y1 = boxes[0][3]
     assert body.pixelColor(int(boxes[0][2] * k) + 15, int(y1 * k) + 12).name() == "#c68642"
     # Chớp mắt: lớp blink chỉ phủ vùng mắt, và khác ảnh lúc mở mắt ở đó.
     eye_x, eye_y = int((boxes[0][0] + boxes[0][2]) / 2 * k), int((boxes[0][1] + boxes[0][3]) / 2 * k)
