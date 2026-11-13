@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import os
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..media import VIDEO_EXTS, find_videos
 from ..pipeline import Cancelled, render_batch, render_one
+from ..scenes import render_scenes
 from ..settings import PresetStore, RenderSettings
 from ..voice import VIETNAMESE_VOICES
 
@@ -59,6 +62,17 @@ class Worker(QObject):
             self.failed.emit(str(e))
 
 
+def _avoid_dead_pipewire() -> None:
+    """Qt 6.10+ trên Linux chọn PipeWire khi có thư viện, và QAudioOutput bị sập (segfault) nếu
+    không có dịch vụ PipeWire đang chạy (máy không có phiên âm thanh, CI). Khi đó dùng PulseAudio."""
+    if not sys.platform.startswith("linux") or os.environ.get("QT_AUDIO_BACKEND"):
+        return
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    sock = os.environ.get("PIPEWIRE_REMOTE") or "pipewire-0"
+    if not (runtime and (Path(runtime) / sock).exists()):
+        os.environ["QT_AUDIO_BACKEND"] = "pulseaudio"
+
+
 class ColorButton(QPushButton):
     def __init__(self, color: str):
         super().__init__()
@@ -95,6 +109,8 @@ def _ispin(lo, hi, value):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Giữ các giá trị preset không có ô chỉnh trên giao diện (fps, crf, viền chữ...).
+        self._base = RenderSettings()
         self.setWindowTitle(f"Video Studio v{__version__}")
         self.resize(1400, 860)
         self.presets = PresetStore(PRESET_DIR)
@@ -174,6 +190,7 @@ class MainWindow(QMainWindow):
         title = QLabel("XEM TRƯỚC")
         title.setAlignment(Qt.AlignCenter)
         lay.addWidget(title)
+        _avoid_dead_pipewire()
         try:
             from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
             from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -258,6 +275,8 @@ class MainWindow(QMainWindow):
         f.addRow("Màu", self.sub_color)
         f.addRow("Cách mép dưới (px)", self.sub_margin)
         f.addRow("Số chữ mỗi dòng", self.sub_words)
+        self.export_srt = QCheckBox("Xuất thêm file phụ đề .srt (tải lên YouTube)")
+        f.addRow(self.export_srt)
         lay.addWidget(g)
         lay.addStretch()
         tabs.addTab(t, "Chữ && Phụ đề")
@@ -265,20 +284,38 @@ class MainWindow(QMainWindow):
         # Voice
         t = QWidget()
         f = QFormLayout(t)
-        self.voice_on = QCheckBox("Tạo giọng đọc AI (Edge TTS, cần mạng)")
+        self.voice_on = QCheckBox("Dùng giọng đọc")
+        self.voice_source = QComboBox()
+        self.voice_source.addItem("Giọng AI (Edge TTS, cần mạng)", "tts")
+        self.voice_source.addItem("File thu âm của bạn", "file")
+        voice_file_row = QHBoxLayout()
+        self.voice_file = QLineEdit()
+        self.voice_file.setPlaceholderText("File giọng tự thu (mp3, m4a, wav)")
+        pick_voice = QPushButton("…")
+        pick_voice.setFixedWidth(32)
+        pick_voice.clicked.connect(self._pick_voice_file)
+        voice_file_row.addWidget(self.voice_file)
+        voice_file_row.addWidget(pick_voice)
         self.voice_name = QComboBox()
         for key, label in VIETNAMESE_VOICES.items():
             self.voice_name.addItem(label, key)
         self.voice_rate = _ispin(-50, 100, 0)
         self.voice_rate.setSuffix(" %")
         self.voice_volume = _spin(0, 3, 1, 0.1)
+        self.voice_pitch = _ispin(-100, 100, 0)
+        self.voice_pitch.setSuffix(" Hz")
         self.voice_text = QPlainTextEdit()
         self.voice_text.setPlaceholderText("Lời thoại giới thiệu sản phẩm…")
         f.addRow(self.voice_on)
+        f.addRow("Nguồn giọng", self.voice_source)
+        f.addRow("File thu âm", voice_file_row)
         f.addRow("Giọng", self.voice_name)
         f.addRow("Tốc độ", self.voice_rate)
+        f.addRow("Cao độ", self.voice_pitch)
         f.addRow("Âm lượng", self.voice_volume)
         f.addRow("Lời thoại", self.voice_text)
+        f.addRow(QLabel("Với file thu âm, lời thoại chỉ dùng làm phụ đề (chia đều theo độ dài file)."))
+        self.voice_source.currentIndexChanged.connect(self._update_voice_source)
         tabs.addTab(t, "Voice")
 
         # Âm thanh
@@ -299,7 +336,87 @@ class MainWindow(QMainWindow):
         f.addRow("Âm lượng gốc", self.orig_volume)
         f.addRow("Nhạc nền", music_row)
         f.addRow("Âm lượng nhạc", self.music_volume)
+        self.duck_music = QCheckBox("Tự hạ nhạc nền khi có lời đọc")
+        f.addRow(self.duck_music)
         tabs.addTab(t, "Âm thanh")
+
+        # Hoạt hình theo cảnh
+        t = QWidget()
+        f = QFormLayout(t)
+        self.scene_script = QPlainTextEdit()
+        self.scene_script.setPlaceholderText(
+            "Mỗi cảnh một đoạn, cách nhau bởi một dòng trống.\n"
+            "Dòng đầu có thể là [tên_ảnh.png] để chọn ảnh cho cảnh.\n\n"
+            "[meo_ngu.png]\nNgày xửa ngày xưa, có một chú mèo lười.\n\n"
+            "Một hôm, chú quyết định đi câu cá.")
+        image_row = QHBoxLayout()
+        self.scene_dir = QLineEdit()
+        self.scene_dir.setPlaceholderText("Thư mục ảnh nhân vật/bối cảnh của bạn")
+        pick = QPushButton("…")
+        pick.setFixedWidth(32)
+        pick.clicked.connect(self._pick_scene_dir)
+        image_row.addWidget(self.scene_dir)
+        image_row.addWidget(pick)
+        self.scene_seconds = _spin(0.5, 60, 4)
+        self.scene_pause = _spin(0, 5, 0.4, 0.1)
+        self.scene_motion = QCheckBox("Ảnh chuyển động (zoom, lia)")
+        self.scene_zoom = _spin(0, 0.5, 0.15, 0.05, 2)
+        self.scene_fade = _spin(0, 2, 0.3, 0.1)
+        char_row = QHBoxLayout()
+        self.char_dir = QLineEdit()
+        self.char_dir.setPlaceholderText("Một nhân vật (có body.png) hoặc thư mục chứa nhiều nhân vật để hội thoại")
+        self.char_info = QLabel("")
+        self.char_info.setWordWrap(True)
+        self.char_dir.textChanged.connect(self._update_char_info)
+        pick_char = QPushButton("…")
+        pick_char.setFixedWidth(32)
+        pick_char.clicked.connect(self._pick_char_dir)
+        char_row.addWidget(self.char_dir)
+        char_row.addWidget(pick_char)
+        make_char = QPushButton("Tạo nhân vật…")
+        make_char.clicked.connect(self._make_character)
+        char_row.addWidget(make_char)
+        self.char_side = QComboBox()
+        for label, key in (("Bên phải", "right"), ("Giữa", "center"), ("Bên trái", "left")):
+            self.char_side.addItem(label, key)
+        self.char_height = _spin(0.1, 1, 0.55, 0.05, 2)
+        self.char_motion = QCheckBox("Nhân vật thở nhẹ, nhún đầu khi nói")
+        self.lipsync_mode = QComboBox()
+        self.lipsync_mode.addItem("Tự động (Rhubarb nếu có)", "auto")
+        self.lipsync_mode.addItem("Rhubarb Lip Sync", "rhubarb")
+        self.lipsync_mode.addItem("Theo độ to giọng đọc", "loudness")
+        scene_btns = QHBoxLayout()
+        self.scene_preview_btn = QPushButton("Preview hoạt hình")
+        self.scene_preview_btn.clicked.connect(self._preview_scenes)
+        self.scene_export_btn = QPushButton("Xuất video hoạt hình")
+        self.scene_export_btn.setObjectName("export")
+        self.scene_export_btn.clicked.connect(self._export_scenes)
+        scene_btns.addWidget(self.scene_preview_btn)
+        scene_btns.addWidget(self.scene_export_btn)
+        f.addRow("Kịch bản", self.scene_script)
+        f.addRow("Thư mục ảnh", image_row)
+        f.addRow("Giây/cảnh (khi tắt voice)", self.scene_seconds)
+        f.addRow("Nghỉ sau lời đọc (s)", self.scene_pause)
+        f.addRow(self.scene_motion)
+        f.addRow("Mức zoom/lia", self.scene_zoom)
+        f.addRow("Mờ chuyển cảnh (s)", self.scene_fade)
+        f.addRow("Nhân vật nói", char_row)
+        f.addRow(self.char_info)
+        f.addRow("Vị trí nhân vật", self.char_side)
+        f.addRow("Chiều cao nhân vật", self.char_height)
+        f.addRow(self.char_motion)
+        f.addRow("Khớp miệng", self.lipsync_mode)
+        self.also_shorts = QCheckBox("Xuất thêm bản Shorts 9:16")
+        f.addRow(self.also_shorts)
+        self.thumb_on = QCheckBox("Tạo ảnh bìa YouTube (thumbnail)")
+        self.thumb_text = QLineEdit()
+        self.thumb_text.setPlaceholderText("Chữ trên ảnh bìa (trống = dùng tiêu đề)")
+        f.addRow(self.thumb_on)
+        f.addRow("Chữ ảnh bìa", self.thumb_text)
+        f.addRow(QLabel("Giọng đọc, phụ đề, tiêu đề, nhạc nền và khung hình lấy từ các tab khác.\n"
+                        "Chỉ dùng ảnh bạn tự vẽ, tự tạo hoặc có quyền sử dụng."))
+        f.addRow(scene_btns)
+        tabs.addTab(t, "Hoạt hình")
 
         # Preset
         t = QWidget()
@@ -327,7 +444,7 @@ class MainWindow(QMainWindow):
 
     # ---------- đồng bộ cài đặt <-> giao diện ----------
     def collect_settings(self) -> RenderSettings:
-        s = RenderSettings()
+        s = copy.deepcopy(self._base)
         s.cut.min_seg, s.cut.max_seg = self.min_seg.value(), self.max_seg.value()
         s.cut.target_duration = self.target.value()
         s.cut.shuffle_clips = self.shuffle_clips.isChecked()
@@ -346,18 +463,39 @@ class MainWindow(QMainWindow):
         s.subtitle.color = self.sub_color.color
         s.subtitle.margin_v = self.sub_margin.value()
         s.subtitle.max_words = self.sub_words.value()
+        s.subtitle.export_srt = self.export_srt.isChecked()
         s.voice.enabled = self.voice_on.isChecked()
+        s.voice.source = self.voice_source.currentData()
+        s.voice.file_path = self.voice_file.text().strip()
         s.voice.voice = self.voice_name.currentData()
         s.voice.rate = f"{self.voice_rate.value():+d}%"
+        s.voice.pitch = f"{self.voice_pitch.value():+d}Hz"
         s.voice.volume = self.voice_volume.value()
         s.voice.text = self.voice_text.toPlainText()
         s.audio.keep_original = self.keep_orig.isChecked()
         s.audio.original_volume = self.orig_volume.value()
         s.audio.music_path = self.music_path.text().strip()
         s.audio.music_volume = self.music_volume.value()
+        s.audio.duck_music = self.duck_music.isChecked()
+        s.scene.script = self.scene_script.toPlainText()
+        s.scene.image_dir = self.scene_dir.text().strip()
+        s.scene.seconds_per_scene = self.scene_seconds.value()
+        s.scene.pause = self.scene_pause.value()
+        s.scene.motion = self.scene_motion.isChecked()
+        s.scene.zoom = self.scene_zoom.value()
+        s.scene.fade = self.scene_fade.value()
+        s.scene.character_dir = self.char_dir.text().strip()
+        s.scene.character_side = self.char_side.currentData()
+        s.scene.character_height = self.char_height.value()
+        s.scene.character_motion = self.char_motion.isChecked()
+        s.scene.lipsync = self.lipsync_mode.currentData()
+        s.scene.also_shorts = self.also_shorts.isChecked()
+        s.scene.thumbnail = self.thumb_on.isChecked()
+        s.scene.thumbnail_text = self.thumb_text.text()
         return s
 
     def apply_settings(self, s: RenderSettings) -> None:
+        self._base = copy.deepcopy(s)
         self.min_seg.setValue(s.cut.min_seg)
         self.max_seg.setValue(s.cut.max_seg)
         self.target.setValue(s.cut.target_duration)
@@ -378,18 +516,42 @@ class MainWindow(QMainWindow):
         self.sub_color.set_color(s.subtitle.color)
         self.sub_margin.setValue(s.subtitle.margin_v)
         self.sub_words.setValue(s.subtitle.max_words)
+        self.export_srt.setChecked(s.subtitle.export_srt)
         self.voice_on.setChecked(s.voice.enabled)
+        self.voice_source.setCurrentIndex(max(self.voice_source.findData(s.voice.source), 0))
+        self.voice_file.setText(s.voice.file_path)
+        self._update_voice_source()
         self.voice_name.setCurrentIndex(max(self.voice_name.findData(s.voice.voice), 0))
         try:
             self.voice_rate.setValue(int(s.voice.rate.rstrip("%")))
         except ValueError:
             self.voice_rate.setValue(0)
         self.voice_volume.setValue(s.voice.volume)
+        try:
+            self.voice_pitch.setValue(int(s.voice.pitch.removesuffix("Hz")))
+        except ValueError:
+            self.voice_pitch.setValue(0)
         self.voice_text.setPlainText(s.voice.text)
         self.keep_orig.setChecked(s.audio.keep_original)
         self.orig_volume.setValue(s.audio.original_volume)
         self.music_path.setText(s.audio.music_path)
         self.music_volume.setValue(s.audio.music_volume)
+        self.duck_music.setChecked(s.audio.duck_music)
+        self.scene_script.setPlainText(s.scene.script)
+        self.scene_dir.setText(s.scene.image_dir)
+        self.scene_seconds.setValue(s.scene.seconds_per_scene)
+        self.scene_pause.setValue(s.scene.pause)
+        self.scene_motion.setChecked(s.scene.motion)
+        self.scene_zoom.setValue(s.scene.zoom)
+        self.scene_fade.setValue(s.scene.fade)
+        self.char_dir.setText(s.scene.character_dir)
+        self.char_side.setCurrentIndex(max(self.char_side.findData(s.scene.character_side), 0))
+        self.char_height.setValue(s.scene.character_height)
+        self.char_motion.setChecked(s.scene.character_motion)
+        self.lipsync_mode.setCurrentIndex(max(self.lipsync_mode.findData(s.scene.lipsync), 0))
+        self.also_shorts.setChecked(s.scene.also_shorts)
+        self.thumb_on.setChecked(s.scene.thumbnail)
+        self.thumb_text.setText(s.scene.thumbnail_text)
 
     # ---------- hành động ----------
     def clips(self) -> list[str]:
@@ -420,6 +582,56 @@ class MainWindow(QMainWindow):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn nhạc nền", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
         if f:
             self.music_path.setText(f)
+
+    def _update_char_info(self):
+        from ..lipsync import load_cast
+
+        d = Path(self.char_dir.text().strip())
+        if not self.char_dir.text().strip() or not d.is_dir():
+            self.char_info.setText("")
+        elif (d / "body.png").is_file():
+            self.char_info.setText("Một nhân vật đọc toàn bộ lời.")
+        else:
+            try:
+                names = [m.name for m in load_cast(d).values()]
+            except (OSError, ValueError) as e:
+                names, err = [], str(e)
+            else:
+                err = ""
+            self.char_info.setText(
+                f"Dàn nhân vật: {', '.join(names)}. Viết \"{names[0]}: lời thoại\" trong kịch bản." if names
+                else err or "Không thấy nhân vật nào (mỗi nhân vật là một thư mục con có body.png).")
+
+    def _make_character(self):
+        from .character_dialog import CharacterDialog
+
+        d = Path(self.char_dir.text().strip())
+        cast = str(d) if self.char_dir.text().strip() and d.is_dir() and not (d / "body.png").is_file() else ""
+        dlg = CharacterDialog(cast, self)
+        if dlg.exec() and dlg.saved is not None:
+            self.char_dir.setText(str(dlg.saved.parent))
+            self._update_char_info()
+
+    def _pick_char_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "Chọn thư mục nhân vật", self.char_dir.text())
+        if d:
+            self.char_dir.setText(d)
+
+    def _pick_scene_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "Chọn thư mục ảnh", self.scene_dir.text())
+        if d:
+            self.scene_dir.setText(d)
+
+    def _pick_voice_file(self):
+        f, _ = QFileDialog.getOpenFileName(self, "Chọn file thu âm", "", "Audio (*.mp3 *.m4a *.wav *.aac *.ogg)")
+        if f:
+            self.voice_file.setText(f)
+
+    def _update_voice_source(self):
+        tts = self.voice_source.currentData() == "tts"
+        self.voice_name.setEnabled(tts)
+        self.voice_rate.setEnabled(tts)
+        self.voice_file.setEnabled(not tts)
 
     def _open_out_dir(self):
         from PySide6.QtGui import QDesktopServices
@@ -463,8 +675,8 @@ class MainWindow(QMainWindow):
         else:
             self.player.play()
 
-    def _start(self, fn, on_done):
-        if not self.clips():
+    def _start(self, fn, on_done, need_clips: bool = True):
+        if need_clips and not self.clips():
             QMessageBox.information(self, "Thiếu video", "Hãy chọn ít nhất một video nguồn.")
             return
         self.cancel.clear()
@@ -483,8 +695,8 @@ class MainWindow(QMainWindow):
         self.thread.start()
 
     def _busy(self, busy: bool):
-        self.export_btn.setEnabled(not busy)
-        self.preview_btn.setEnabled(not busy)
+        for b in (self.export_btn, self.preview_btn, self.scene_export_btn, self.scene_preview_btn):
+            b.setEnabled(not busy)
         self.stop_btn.setEnabled(busy)
 
     def _export(self):
@@ -497,9 +709,9 @@ class MainWindow(QMainWindow):
 
         self._start(job, lambda paths: self.status.setText(f"Đã xuất {len(paths)} video vào {out_dir}"))
 
-    def _preview(self):
-        clips, s = self.clips(), self.collect_settings()
-        # Preview dựng ở độ phân giải thấp cho nhanh; tỉ lệ giữ nguyên.
+    def _preview_settings(self) -> RenderSettings:
+        """Cài đặt hiện tại thu nhỏ còn cạnh dài ~720 px để dựng preview nhanh."""
+        s = self.collect_settings()
         scale = 360 / max(s.output.width, s.output.height) * 2
         s.output.width = int(s.output.width * scale) // 2 * 2
         s.output.height = int(s.output.height * scale) // 2 * 2
@@ -508,21 +720,66 @@ class MainWindow(QMainWindow):
             st.font_size = max(8, int(st.font_size * scale))
             st.margin_v = int(st.margin_v * scale)
             st.outline = max(1, int(st.outline * scale))
+        return s
+
+    def _play_preview(self, paths):
+        self.status.setText(f"Preview: {paths[0]}")
+        if self.player is not None:
+            self.player.setSource(QUrl.fromLocalFile(str(paths[0])))
+            self.player.play()
+
+    def _preview(self):
+        clips, s = self.clips(), self._preview_settings()
         out = self.preview_dir / f"preview_{os.getpid()}_{id(s)}.mp4"
 
         def job(progress, cancel):
             return [render_one(clips, s, out, seed=1, progress=progress, cancel=cancel)]
 
-        def done(paths):
-            self.status.setText(f"Preview: {paths[0]}")
-            if self.player is not None:
-                self.player.setSource(QUrl.fromLocalFile(str(paths[0])))
-                self.player.play()
+        self._start(job, self._play_preview)
 
-        self._start(job, done)
+    def _preview_scenes(self):
+        s = self._preview_settings()
+        out = self.preview_dir / f"scenes_{os.getpid()}_{id(s)}.mp4"
+
+        def job(progress, cancel):
+            return [render_scenes(s, out, progress=progress, cancel=cancel)]
+
+        self._start(job, self._play_preview, need_clips=False)
+
+    def _export_scenes(self):
+        s = self.collect_settings()
+        out_dir = Path(self.out_dir.text())
+        base = self.base_name.text().strip() or "video"
+        out, i = out_dir / f"{base}_hoathinh.mp4", 2
+        while out.exists() or out.with_name(out.stem + "_shorts.mp4").exists():  # không ghi đè
+            out, i = out_dir / f"{base}_hoathinh_{i}.mp4", i + 1
+        jobs = [(s, out)]
+        if s.scene.also_shorts and s.output.width >= s.output.height:
+            shorts = RenderSettings.from_dict(s.to_dict())
+            shorts.output.width, shorts.output.height = 1080, 1920
+            jobs.append((shorts, out.with_name(out.stem + "_shorts.mp4")))
+
+        def job(progress, cancel):
+            done = []
+            for k, (settings, path) in enumerate(jobs):
+                def sub(f, m, k=k):
+                    progress((k + f) / len(jobs), f"[{k + 1}/{len(jobs)}] {m}")
+                done.append(render_scenes(settings, path, progress=sub, cancel=cancel))
+            return done
+
+        self._start(job, lambda paths: self.status.setText("Đã xuất " + ", ".join(str(p) for p in paths)),
+                    need_clips=False)
 
     def closeEvent(self, event):
         self.cancel.set()
+        # Chờ luồng dựng dừng hẳn (ffmpeg bị kill) để tránh lỗi "QThread destroyed while running".
+        try:
+            if self.thread is not None and self.thread.isRunning():
+                # quit() gọi thẳng: tín hiệu finished->quit xếp hàng ở luồng chính đang bị chặn.
+                self.thread.quit()
+                self.thread.wait(5000)
+        except RuntimeError:  # QThread đã bị deleteLater
+            pass
         super().closeEvent(event)
 
 

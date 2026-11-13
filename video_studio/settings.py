@@ -49,14 +49,18 @@ class SubtitleSettings:
     outline: int = 4
     margin_v: int = 300  # khoảng cách từ mép dưới, px
     max_words: int = 6  # số chữ tối đa mỗi dòng phụ đề
+    export_srt: bool = True  # ghi thêm file .srt cạnh video (tải lên YouTube làm phụ đề)
 
 
 @dataclass
 class VoiceSettings:
     enabled: bool = False
-    text: str = ""
+    source: str = "tts"  # "tts" (Edge TTS) hoặc "file" (file thu âm của bạn)
+    file_path: str = ""  # dùng khi source == "file"
+    text: str = ""  # lời thoại; với "file" chỉ dùng để làm phụ đề (chia đều theo thời gian)
     voice: str = "vi-VN-HoaiMyNeural"
     rate: str = "+0%"
+    pitch: str = "+0Hz"
     volume: float = 1.0
 
 
@@ -66,6 +70,27 @@ class AudioSettings:
     original_volume: float = 0.3
     music_path: str = ""
     music_volume: float = 0.15
+    duck_music: bool = True  # tự hạ nhạc nền khi có lời đọc
+
+
+@dataclass
+class SceneSettings:
+    """Chế độ hoạt hình theo cảnh: mỗi đoạn kịch bản là một cảnh với một ảnh."""
+    script: str = ""
+    image_dir: str = ""  # thư mục ảnh; đoạn không ghi [ảnh] sẽ lấy ảnh tiếp theo trong thư mục
+    seconds_per_scene: float = 4.0  # độ dài mỗi cảnh khi không bật voice
+    pause: float = 0.4  # nghỉ sau lời đọc của mỗi cảnh, giây
+    motion: bool = True  # zoom/lia ảnh (hiệu ứng Ken Burns)
+    zoom: float = 0.15  # mức zoom/lia, 0.15 = 15%
+    fade: float = 0.3  # mờ dần đầu/cuối mỗi cảnh, giây
+    character_dir: str = ""  # thư mục nhân vật nói khớp miệng (xem lipsync.py); trống = không dùng
+    character_side: str = "right"  # "left", "center" hoặc "right"
+    character_height: float = 0.55  # chiều cao nhân vật so với khung hình
+    character_motion: bool = True  # nhân vật thở nhẹ và nhún khi nói
+    lipsync: str = "auto"  # "auto" (Rhubarb nếu có), "rhubarb" hoặc "loudness"
+    thumbnail: bool = True  # tạo ảnh bìa YouTube <tên>_thumbnail.jpg từ cảnh đầu
+    thumbnail_text: str = ""  # chữ trên ảnh bìa; trống = dùng tiêu đề
+    also_shorts: bool = False  # xuất thêm bản 9:16 cho YouTube Shorts khi khung chính không phải 9:16
 
 
 @dataclass
@@ -76,6 +101,7 @@ class RenderSettings:
     subtitle: SubtitleSettings = field(default_factory=SubtitleSettings)
     voice: VoiceSettings = field(default_factory=VoiceSettings)
     audio: AudioSettings = field(default_factory=AudioSettings)
+    scene: SceneSettings = field(default_factory=SceneSettings)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -99,6 +125,10 @@ def _build(cls, data: dict[str, Any]):
     return cls(**kwargs)
 
 
+_WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                     *(f"LPT{i}" for i in range(1, 10))}
+
+
 class PresetStore:
     """Lưu preset dạng file JSON trong một thư mục."""
 
@@ -110,6 +140,8 @@ class PresetStore:
         safe = "".join(c for c in name if c.isalnum() or c in " -_").strip()
         if not safe:
             raise ValueError("Tên preset không hợp lệ")
+        if safe.upper() in _WINDOWS_RESERVED:
+            safe += "_"  # Windows không cho tạo file tên CON, NUL, COM1...
         return self.folder / f"{safe}.json"
 
     def names(self) -> list[str]:

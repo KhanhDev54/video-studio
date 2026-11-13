@@ -3,22 +3,53 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+
+# Trên Windows, app GUI gọi ffmpeg sẽ bật cửa sổ console đen nếu không có cờ này.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class FFmpegMissing(RuntimeError):
     pass
 
 
+def app_root() -> Path:
+    """Thư mục chứa app: cạnh file .exe khi đóng gói bằng PyInstaller, gốc repo khi chạy mã nguồn.
+    Người dùng đặt thư mục ffmpeg/ và rhubarb/ ở đây."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _candidate_dirs() -> list[Path]:
+    """Các thư mục tìm ffmpeg trước khi tra PATH, theo thứ tự ưu tiên."""
+    dirs = []
+    if os.environ.get("VSTUDIO_FFMPEG_DIR"):
+        dirs.append(Path(os.environ["VSTUDIO_FFMPEG_DIR"]))
+    root = app_root()
+    dirs += [root / "ffmpeg" / "bin", root / "ffmpeg"]
+    if sys.platform == "win32" and os.environ.get("LOCALAPPDATA"):
+        # winget đặt lối tắt ở đây; PATH chỉ có hiệu lực sau khi mở lại cửa sổ lệnh.
+        dirs.append(Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "WinGet" / "Links")
+    return dirs
+
+
 def require_ffmpeg() -> tuple[str, str]:
+    for d in _candidate_dirs():
+        ffmpeg, ffprobe = shutil.which("ffmpeg", path=str(d)), shutil.which("ffprobe", path=str(d))
+        if ffmpeg and ffprobe:
+            return ffmpeg, ffprobe
     ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
     if not ffmpeg or not ffprobe:
-        raise FFmpegMissing("Không tìm thấy ffmpeg/ffprobe. Cài FFmpeg và thêm vào PATH.")
+        raise FFmpegMissing("Không tìm thấy ffmpeg/ffprobe. Cài FFmpeg và thêm vào PATH, "
+                            "hoặc chép ffmpeg.exe + ffprobe.exe vào thư mục ffmpeg\\bin cạnh app.")
     return ffmpeg, ffprobe
 
 
@@ -33,12 +64,16 @@ class MediaInfo:
 
 def probe(path: str | Path) -> MediaInfo:
     _, ffprobe = require_ffmpeg()
-    out = subprocess.run(
+    # ffprobe in JSON dạng UTF-8; Windows mặc định giải mã theo code page (cp1258...)
+    # nên tên file tiếng Việt sẽ lỗi nếu không chỉ rõ encoding.
+    proc = subprocess.run(
         [ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
          "-of", "json", str(path)],
-        capture_output=True, text=True, check=True,
-    ).stdout
-    data = json.loads(out)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"Không đọc được file {Path(path).name}: {proc.stderr.strip()[-300:]}")
+    data = json.loads(proc.stdout or "{}")
     streams = data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), {})
     return MediaInfo(
